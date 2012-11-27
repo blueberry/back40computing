@@ -133,13 +133,13 @@ var searchBox = new SearchBox("searchBox", "search",false,'Search');
 <div class="line">     <span class="comment">// A segment of data items per thread</span></div>
 <div class="line">     T data[ITEMS_PER_THREAD];</div>
 <div class="line"></div>
-<div class="line">     <span class="comment">// Load a tile of data using vector-load instructions if possible</span></div>
+<div class="line">     <span class="comment">// Load a tile of data using vector-load instructions</span></div>
 <div class="line">     <a class="code" href="group___simt_utils.html#gaba3b58962601c11d7bc2c0addd08565b" title="Load a tile of items across CTA threads directly using the specified cache modifier.">CtaLoadVectorized</a>(data, d_in, 0);</div>
 <div class="line"></div>
 <div class="line">     <span class="comment">// Perform an exclusive prefix sum across the tile of data</span></div>
 <div class="line">     <a class="code" href="classcub_1_1_cta_scan.html#a5ea28e4ec740677272952997c7793075" title="Computes an exclusive CTA-wide prefix scan using addition (+) as the scan operator. Each thread contributes one input element. Also computes the CTA-wide aggregate of all inputs for thread0.">CtaScan::ExclusiveSum</a>(smem_storage, data, data);</div>
 <div class="line"></div>
-<div class="line">     <span class="comment">// Store a tile of data using vector-load instructions if possible</span></div>
+<div class="line">     <span class="comment">// Store a tile of data using vector-load instructions</span></div>
 <div class="line">     <a class="code" href="group___simt_utils.html#ga175a94f15417edb776706412b31dc019" title="Store a tile of items across CTA threads directly using the specified cache modifier.">CtaStoreVectorized</a>(data, d_out, 0);</div>
 <div class="line">}</div>
 </div><!-- fragment --></dd></dl>
@@ -147,7 +147,7 @@ var searchBox = new SearchBox("searchBox", "search",false,'Search');
 <dl class="section user"><dt></dt><dd>Furthermore, the kernel uses CUB's primitives for vectorizing global loads and stores. For example, <code>ld.global.v4.s32</code> will be generated when <code>T</code> = <code>int</code> and <code>ITEMS_PER_THREAD</code> is a multiple of 4.</dd></dl>
 <h1><a class="anchor" id="sec3"></a>
 (3) Why do you need CUB?</h1>
-<dl class="section user"><dt></dt><dd>With the exception of CUB, there are few (if any) software libraries of reusable CTA-level primitives. This is unfortunate because cooperative parallelism is notoriously challenging to implement. For non-data-parallel problems having dependences between threads, the SIMT kernel is the most complex (and performance-sensitive) layer in the CUDA software stack. Developers must carefully manage the state and interaction of many, many threads. Best practices would have us leverage libraries and abstraction layers to help mitigate the complexity, risks, and maintenance costs of this software.</dd></dl>
+<dl class="section user"><dt></dt><dd>With the exception of CUB, there are few (if any) software libraries of reusable CTA-level primitives. This is unfortunate, especially for complex algorithms with intricate dependences between threads. For cooperative problems, the SIMT kernel is often the most complex and performance-sensitive layer in the CUDA software stack. Best practices would have us leverage libraries and abstraction layers to help mitigate the complexity, risks, and maintenance costs of this software.</dd></dl>
 <dl class="section user"><dt></dt><dd>As a SIMT library and software abstraction layer, CUB gives you:<ol type="1">
 <li><b>The ease of sequential programming.</b> Parallel primitives within kernels can be simply sequenced together (similar to Thrust programming on the host).</li>
 <li><b>The benefits of transparent performance-portability.</b> Kernels can be simply recompiled against new CUB releases (instead of hand-rewritten) to leverage new algorithmic developments, hardware instructions, etc.</li>
@@ -174,7 +174,7 @@ C++ templates</h2>
 <dl class="section user"><dt></dt><dd>To provide this flexibility, CUB is implemented as a C++ template library. C++ templates are a way to write generic algorithms and data structures. There is no need to build CUB separately. You simply #<code>include</code> the <code><a class="el" href="cub_8cuh.html">cub.cuh</a></code> header file into your <code>.cu</code> or <code>.cpp</code> sources and compile with CUDA's <code>nvcc</code> compiler.</dd></dl>
 <h2><a class="anchor" id="sec3sec2"></a>
 Reflective type structure</h2>
-<dl class="section user"><dt></dt><dd>By their nature, cooperative SIMT components require shared memory for communication between threads. However, the specific size and layout of the memory needed by a given primitive will be specific to the details of its parameterization (e.g., how may threads are calling into it, how many items per thread, etc.). Furthermore, this shared memory must be allocated externally to the component if it is to be reused elsewhere by the CTA.</dd></dl>
+<dl class="section user"><dt></dt><dd>Cooperative SIMT components require shared memory for communication between threads. However, the specific size and layout of the memory needed by a given primitive will be specific to the details of its problem context (e.g., how may threads are calling into it, how many items per thread, etc.). Furthermore, this shared memory must be allocated externally to the component if it is to be reused elsewhere by the CTA.</dd></dl>
 <dl class="section user"><dt></dt><dd><div class="fragment"><div class="line"><span class="comment">// Parameterize a CtaRadixSort type for use with 128 threads</span></div>
 <div class="line"><span class="comment">// and 4 items per thread</span></div>
 <div class="line"><span class="keyword">typedef</span> <a class="code" href="classcub_1_1_cta_radix_sort.html" title="The CtaRadixSort type provides variants of parallel radix sorting of unsigned numeric types across th...">cub::CtaRadixSort&lt;unsigned int, 128, 4&gt;</a> CtaRadixSort;</div>
@@ -203,7 +203,7 @@ Flexible data arrangement among threads</h2>
 </div></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Mon Nov 26 2012 16:36:25 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
+Generated on Tue Nov 27 2012 13:01:46 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
 <img class="footer" src="doxygen.png" alt="doxygen"/>
 </a> 1.8.2
 </small></address>

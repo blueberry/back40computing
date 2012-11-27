@@ -107,13 +107,13 @@
  *      // A segment of data items per thread
  *      T data[ITEMS_PER_THREAD];
  *
- *      // Load a tile of data using vector-load instructions if possible
+ *      // Load a tile of data using vector-load instructions
  *      CtaLoadVectorized(data, d_in, 0);
  *
  *      // Perform an exclusive prefix sum across the tile of data
  *      CtaScan::ExclusiveSum(smem_storage, data, data);
  *
- *      // Store a tile of data using vector-load instructions if possible
+ *      // Store a tile of data using vector-load instructions
  *      CtaStoreVectorized(data, d_out, 0);
  * }
  * \endcode
@@ -135,13 +135,12 @@
  *
  * \par
  * With the exception of CUB, there are few (if any) software libraries of
- * reusable CTA-level primitives.  This is unfortunate because cooperative parallelism
- * is notoriously challenging to implement.  For non-data-parallel problems
- * having dependences between threads, the SIMT kernel is the most complex
- * (and performance-sensitive) layer in the CUDA software stack.  Developers must
- * carefully manage the state and interaction of many, many threads.  Best
- * practices would have us leverage libraries and abstraction layers to help
- * mitigate the complexity, risks, and maintenance costs of this software.
+ * reusable CTA-level primitives.  This is unfortunate, especially for
+ * complex algorithms with intricate dependences between threads.  For cooperative
+ * problems, the SIMT kernel is often the most complex and performance-sensitive
+ * layer in the CUDA software stack.  Best practices would have us
+ * leverage libraries and abstraction layers to help  mitigate the complexity,
+ * risks, and maintenance costs of this software.
  *
  * \par
  * As a SIMT library and software abstraction layer, CUB gives you:
@@ -182,10 +181,10 @@
  * \subsection sec3sec2 Reflective type structure
  *
  * \par
- * By their nature, cooperative SIMT components require shared memory for
+ * Cooperative SIMT components require shared memory for
  * communication between threads.  However, the specific size and layout
  * of the memory needed by a given primitive will be
- * specific to the details of its parameterization (e.g., how may threads are
+ * specific to the details of its problem context (e.g., how may threads are
  * calling into it, how many items per thread, etc.).  Furthermore, this shared
  * memory must be allocated externally to the component if it is to be reused
  * elsewhere by the CTA.

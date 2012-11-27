@@ -116,22 +116,22 @@ Static Public Member Functions</h2></td></tr>
 <tr class="memitem:a5712a4bb7b34ee587e273c86c5ce9108"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp &gt; </td></tr>
 <tr class="memitem:a5712a4bb7b34ee587e273c86c5ce9108"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_scan.html#a5712a4bb7b34ee587e273c86c5ce9108">ExclusiveScan</a> (<a class="el" href="classcub_1_1_cta_scan.html#a98037d2e1f2390059ef8f7d97493f805">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T identity, ScanOp scan_op, T &amp;aggregate)</td></tr>
-<tr class="memdesc:a5712a4bb7b34ee587e273c86c5ce9108"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>.  <a href="#a5712a4bb7b34ee587e273c86c5ce9108"></a><br/></td></tr>
+<tr class="memdesc:a5712a4bb7b34ee587e273c86c5ce9108"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>.  <a href="#a5712a4bb7b34ee587e273c86c5ce9108"></a><br/></td></tr>
 <tr class="separator:a5712a4bb7b34ee587e273c86c5ce9108"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a176abe8b2cc7198c3a8ee404e5d5b76c"><td class="memTemplParams" colspan="2">template&lt;int ITEMS_PER_THREAD, typename ScanOp &gt; </td></tr>
 <tr class="memitem:a176abe8b2cc7198c3a8ee404e5d5b76c"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_scan.html#a176abe8b2cc7198c3a8ee404e5d5b76c">ExclusiveScan</a> (<a class="el" href="classcub_1_1_cta_scan.html#a98037d2e1f2390059ef8f7d97493f805">SmemStorage</a> &amp;smem_storage, T(&amp;input)[ITEMS_PER_THREAD], T(&amp;output)[ITEMS_PER_THREAD], T identity, ScanOp scan_op, T &amp;aggregate)</td></tr>
-<tr class="memdesc:a176abe8b2cc7198c3a8ee404e5d5b76c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>.  <a href="#a176abe8b2cc7198c3a8ee404e5d5b76c"></a><br/></td></tr>
+<tr class="memdesc:a176abe8b2cc7198c3a8ee404e5d5b76c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>.  <a href="#a176abe8b2cc7198c3a8ee404e5d5b76c"></a><br/></td></tr>
 <tr class="separator:a176abe8b2cc7198c3a8ee404e5d5b76c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a080a821df765eaa34ed105783290fc11"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp &gt; </td></tr>
 <tr class="memitem:a080a821df765eaa34ed105783290fc11"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_scan.html#a080a821df765eaa34ed105783290fc11">ExclusiveScan</a> (<a class="el" href="classcub_1_1_cta_scan.html#a98037d2e1f2390059ef8f7d97493f805">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T identity, ScanOp scan_op, T &amp;aggregate, T &amp;cta_prefix)</td></tr>
-<tr class="memdesc:a080a821df765eaa34ed105783290fc11"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. The <code>cta_prefix</code> value from thread<sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>.  <a href="#a080a821df765eaa34ed105783290fc11"></a><br/></td></tr>
+<tr class="memdesc:a080a821df765eaa34ed105783290fc11"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. The <code>cta_prefix</code> value from <em>thread</em><sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>.  <a href="#a080a821df765eaa34ed105783290fc11"></a><br/></td></tr>
 <tr class="separator:a080a821df765eaa34ed105783290fc11"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a0207fa14df7dac84f5816b9cd25884da"><td class="memTemplParams" colspan="2">template&lt;int ITEMS_PER_THREAD, typename ScanOp &gt; </td></tr>
 <tr class="memitem:a0207fa14df7dac84f5816b9cd25884da"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_scan.html#a0207fa14df7dac84f5816b9cd25884da">ExclusiveScan</a> (<a class="el" href="classcub_1_1_cta_scan.html#a98037d2e1f2390059ef8f7d97493f805">SmemStorage</a> &amp;smem_storage, T(&amp;input)[ITEMS_PER_THREAD], T(&amp;output)[ITEMS_PER_THREAD], T identity, ScanOp scan_op, T &amp;aggregate, T &amp;cta_prefix)</td></tr>
-<tr class="memdesc:a0207fa14df7dac84f5816b9cd25884da"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. The <code>cta_prefix</code> value from thread<sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>.  <a href="#a0207fa14df7dac84f5816b9cd25884da"></a><br/></td></tr>
+<tr class="memdesc:a0207fa14df7dac84f5816b9cd25884da"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. The <code>cta_prefix</code> value from <em>thread</em><sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>.  <a href="#a0207fa14df7dac84f5816b9cd25884da"></a><br/></td></tr>
 <tr class="separator:a0207fa14df7dac84f5816b9cd25884da"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a218f8c3fb05c2815152b7e6c0fdd7075"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp &gt; </td></tr>
 <tr class="memitem:a218f8c3fb05c2815152b7e6c0fdd7075"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
@@ -147,51 +147,51 @@ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a 
 <tr class="memitem:a1f093065e809bed130347a7ef53bdfcc"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp &gt; </td></tr>
 <tr class="memitem:a1f093065e809bed130347a7ef53bdfcc"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_scan.html#a1f093065e809bed130347a7ef53bdfcc">ExclusiveScan</a> (<a class="el" href="classcub_1_1_cta_scan.html#a98037d2e1f2390059ef8f7d97493f805">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, ScanOp scan_op, T &amp;aggregate)</td></tr>
-<tr class="memdesc:a1f093065e809bed130347a7ef53bdfcc"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. With no identity value, the output computed for thread<sub>0</sub> is invalid.  <a href="#a1f093065e809bed130347a7ef53bdfcc"></a><br/></td></tr>
+<tr class="memdesc:a1f093065e809bed130347a7ef53bdfcc"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>. With no identity value, the output computed for <em>thread</em><sub>0</sub> is invalid.  <a href="#a1f093065e809bed130347a7ef53bdfcc"></a><br/></td></tr>
 <tr class="separator:a1f093065e809bed130347a7ef53bdfcc"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a07f21c8d4c07bd0a7cbcaf4997796cdc"><td class="memTemplParams" colspan="2">template&lt;int ITEMS_PER_THREAD, typename ScanOp &gt; </td></tr>
 <tr class="memitem:a07f21c8d4c07bd0a7cbcaf4997796cdc"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_scan.html#a07f21c8d4c07bd0a7cbcaf4997796cdc">ExclusiveScan</a> (<a class="el" href="classcub_1_1_cta_scan.html#a98037d2e1f2390059ef8f7d97493f805">SmemStorage</a> &amp;smem_storage, T(&amp;input)[ITEMS_PER_THREAD], T(&amp;output)[ITEMS_PER_THREAD], ScanOp scan_op, T &amp;aggregate)</td></tr>
-<tr class="memdesc:a07f21c8d4c07bd0a7cbcaf4997796cdc"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. With no identity value, the output computed for thread<sub>0</sub> is invalid.  <a href="#a07f21c8d4c07bd0a7cbcaf4997796cdc"></a><br/></td></tr>
+<tr class="memdesc:a07f21c8d4c07bd0a7cbcaf4997796cdc"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>. With no identity value, the output computed for <em>thread</em><sub>0</sub> is invalid.  <a href="#a07f21c8d4c07bd0a7cbcaf4997796cdc"></a><br/></td></tr>
 <tr class="separator:a07f21c8d4c07bd0a7cbcaf4997796cdc"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a7251dd8b5806345765cee4f92578c356"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp &gt; </td></tr>
 <tr class="memitem:a7251dd8b5806345765cee4f92578c356"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_scan.html#a7251dd8b5806345765cee4f92578c356">ExclusiveScan</a> (<a class="el" href="classcub_1_1_cta_scan.html#a98037d2e1f2390059ef8f7d97493f805">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, ScanOp scan_op, T &amp;aggregate, T &amp;cta_prefix)</td></tr>
-<tr class="memdesc:a7251dd8b5806345765cee4f92578c356"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. The <code>cta_prefix</code> value from thread<sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>. With no identity value, the output computed for thread<sub>0</sub> is invalid.  <a href="#a7251dd8b5806345765cee4f92578c356"></a><br/></td></tr>
+<tr class="memdesc:a7251dd8b5806345765cee4f92578c356"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. The <code>cta_prefix</code> value from <em>thread</em><sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>. With no identity value, the output computed for <em>thread</em><sub>0</sub> is invalid.  <a href="#a7251dd8b5806345765cee4f92578c356"></a><br/></td></tr>
 <tr class="separator:a7251dd8b5806345765cee4f92578c356"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ad2e814ec27b60667ef246460e996528f"><td class="memTemplParams" colspan="2">template&lt;int ITEMS_PER_THREAD, typename ScanOp &gt; </td></tr>
 <tr class="memitem:ad2e814ec27b60667ef246460e996528f"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_scan.html#ad2e814ec27b60667ef246460e996528f">ExclusiveScan</a> (<a class="el" href="classcub_1_1_cta_scan.html#a98037d2e1f2390059ef8f7d97493f805">SmemStorage</a> &amp;smem_storage, T(&amp;input)[ITEMS_PER_THREAD], T(&amp;output)[ITEMS_PER_THREAD], ScanOp scan_op, T &amp;aggregate, T &amp;cta_prefix)</td></tr>
-<tr class="memdesc:ad2e814ec27b60667ef246460e996528f"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. The <code>cta_prefix</code> value from thread<sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>. With no identity value, the output computed for thread<sub>0</sub> is invalid.  <a href="#ad2e814ec27b60667ef246460e996528f"></a><br/></td></tr>
+<tr class="memdesc:ad2e814ec27b60667ef246460e996528f"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. The <code>cta_prefix</code> value from <em>thread</em><sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>. With no identity value, the output computed for <em>thread</em><sub>0</sub> is invalid.  <a href="#ad2e814ec27b60667ef246460e996528f"></a><br/></td></tr>
 <tr class="separator:ad2e814ec27b60667ef246460e996528f"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a8b6d7fd061854cc572416bc331695f3e"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp &gt; </td></tr>
 <tr class="memitem:a8b6d7fd061854cc572416bc331695f3e"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_scan.html#a8b6d7fd061854cc572416bc331695f3e">ExclusiveScan</a> (<a class="el" href="classcub_1_1_cta_scan.html#a98037d2e1f2390059ef8f7d97493f805">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, ScanOp scan_op)</td></tr>
-<tr class="memdesc:a8b6d7fd061854cc572416bc331695f3e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. With no identity value, the output computed for thread<sub>0</sub> is invalid.  <a href="#a8b6d7fd061854cc572416bc331695f3e"></a><br/></td></tr>
+<tr class="memdesc:a8b6d7fd061854cc572416bc331695f3e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. With no identity value, the output computed for <em>thread</em><sub>0</sub> is invalid.  <a href="#a8b6d7fd061854cc572416bc331695f3e"></a><br/></td></tr>
 <tr class="separator:a8b6d7fd061854cc572416bc331695f3e"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ac7a11c45bac3acc1da45e320a3162b19"><td class="memTemplParams" colspan="2">template&lt;int ITEMS_PER_THREAD, typename ScanOp &gt; </td></tr>
 <tr class="memitem:ac7a11c45bac3acc1da45e320a3162b19"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_scan.html#ac7a11c45bac3acc1da45e320a3162b19">ExclusiveScan</a> (<a class="el" href="classcub_1_1_cta_scan.html#a98037d2e1f2390059ef8f7d97493f805">SmemStorage</a> &amp;smem_storage, T(&amp;input)[ITEMS_PER_THREAD], T(&amp;output)[ITEMS_PER_THREAD], ScanOp scan_op)</td></tr>
-<tr class="memdesc:ac7a11c45bac3acc1da45e320a3162b19"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. With no identity value, the output computed for thread<sub>0</sub> is invalid.  <a href="#ac7a11c45bac3acc1da45e320a3162b19"></a><br/></td></tr>
+<tr class="memdesc:ac7a11c45bac3acc1da45e320a3162b19"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. With no identity value, the output computed for <em>thread</em><sub>0</sub> is invalid.  <a href="#ac7a11c45bac3acc1da45e320a3162b19"></a><br/></td></tr>
 <tr class="separator:ac7a11c45bac3acc1da45e320a3162b19"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr><td colspan="2"><div class="groupHeader">Exclusive prefix sums</div></td></tr>
 <tr class="memitem:a5ea28e4ec740677272952997c7793075"><td class="memItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_scan.html#a5ea28e4ec740677272952997c7793075">ExclusiveSum</a> (<a class="el" href="classcub_1_1_cta_scan.html#a98037d2e1f2390059ef8f7d97493f805">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T &amp;aggregate)</td></tr>
-<tr class="memdesc:a5ea28e4ec740677272952997c7793075"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive CTA-wide prefix scan using addition (+) as the scan operator. Each thread contributes one input element. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>.  <a href="#a5ea28e4ec740677272952997c7793075"></a><br/></td></tr>
+<tr class="memdesc:a5ea28e4ec740677272952997c7793075"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive CTA-wide prefix scan using addition (+) as the scan operator. Each thread contributes one input element. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>.  <a href="#a5ea28e4ec740677272952997c7793075"></a><br/></td></tr>
 <tr class="separator:a5ea28e4ec740677272952997c7793075"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a58af059e6f0989b6b2d38a9b004b2090"><td class="memTemplParams" colspan="2">template&lt;int ITEMS_PER_THREAD&gt; </td></tr>
 <tr class="memitem:a58af059e6f0989b6b2d38a9b004b2090"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_scan.html#a58af059e6f0989b6b2d38a9b004b2090">ExclusiveSum</a> (<a class="el" href="classcub_1_1_cta_scan.html#a98037d2e1f2390059ef8f7d97493f805">SmemStorage</a> &amp;smem_storage, T(&amp;input)[ITEMS_PER_THREAD], T(&amp;output)[ITEMS_PER_THREAD], T &amp;aggregate)</td></tr>
-<tr class="memdesc:a58af059e6f0989b6b2d38a9b004b2090"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive CTA-wide prefix scan using addition (+) as the scan operator. Each thread contributes an array of consecutive input elements. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>.  <a href="#a58af059e6f0989b6b2d38a9b004b2090"></a><br/></td></tr>
+<tr class="memdesc:a58af059e6f0989b6b2d38a9b004b2090"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive CTA-wide prefix scan using addition (+) as the scan operator. Each thread contributes an array of consecutive input elements. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>.  <a href="#a58af059e6f0989b6b2d38a9b004b2090"></a><br/></td></tr>
 <tr class="separator:a58af059e6f0989b6b2d38a9b004b2090"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aa8d4038888380abacc1f91b1196170d9"><td class="memItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_scan.html#aa8d4038888380abacc1f91b1196170d9">ExclusiveSum</a> (<a class="el" href="classcub_1_1_cta_scan.html#a98037d2e1f2390059ef8f7d97493f805">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T &amp;aggregate, T &amp;cta_prefix)</td></tr>
-<tr class="memdesc:aa8d4038888380abacc1f91b1196170d9"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive CTA-wide prefix scan using addition (+) as the scan operator. Each thread contributes one input element. The <code>cta_prefix</code> value from thread<sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>.  <a href="#aa8d4038888380abacc1f91b1196170d9"></a><br/></td></tr>
+<tr class="memdesc:aa8d4038888380abacc1f91b1196170d9"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive CTA-wide prefix scan using addition (+) as the scan operator. Each thread contributes one input element. The <code>cta_prefix</code> value from <em>thread</em><sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>.  <a href="#aa8d4038888380abacc1f91b1196170d9"></a><br/></td></tr>
 <tr class="separator:aa8d4038888380abacc1f91b1196170d9"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a6771df5dd9bb87032cc2cc62db01fc4d"><td class="memTemplParams" colspan="2">template&lt;int ITEMS_PER_THREAD&gt; </td></tr>
 <tr class="memitem:a6771df5dd9bb87032cc2cc62db01fc4d"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_scan.html#a6771df5dd9bb87032cc2cc62db01fc4d">ExclusiveSum</a> (<a class="el" href="classcub_1_1_cta_scan.html#a98037d2e1f2390059ef8f7d97493f805">SmemStorage</a> &amp;smem_storage, T(&amp;input)[ITEMS_PER_THREAD], T(&amp;output)[ITEMS_PER_THREAD], T &amp;aggregate, T &amp;cta_prefix)</td></tr>
-<tr class="memdesc:a6771df5dd9bb87032cc2cc62db01fc4d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive CTA-wide prefix scan using addition (+) as the scan operator. Each thread contributes an array of consecutive input elements. The <code>cta_prefix</code> value from thread<sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>.  <a href="#a6771df5dd9bb87032cc2cc62db01fc4d"></a><br/></td></tr>
+<tr class="memdesc:a6771df5dd9bb87032cc2cc62db01fc4d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive CTA-wide prefix scan using addition (+) as the scan operator. Each thread contributes an array of consecutive input elements. The <code>cta_prefix</code> value from <em>thread</em><sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>.  <a href="#a6771df5dd9bb87032cc2cc62db01fc4d"></a><br/></td></tr>
 <tr class="separator:a6771df5dd9bb87032cc2cc62db01fc4d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a99404fc91d6dc030163f1edddf6f0844"><td class="memItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_scan.html#a99404fc91d6dc030163f1edddf6f0844">ExclusiveSum</a> (<a class="el" href="classcub_1_1_cta_scan.html#a98037d2e1f2390059ef8f7d97493f805">SmemStorage</a> &amp;smem_storage, T input, T &amp;output)</td></tr>
@@ -206,22 +206,22 @@ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a 
 <tr class="memitem:a03ec10d36d8fa96791a4b4ff1feb2dc1"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp &gt; </td></tr>
 <tr class="memitem:a03ec10d36d8fa96791a4b4ff1feb2dc1"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_scan.html#a03ec10d36d8fa96791a4b4ff1feb2dc1">InclusiveScan</a> (<a class="el" href="classcub_1_1_cta_scan.html#a98037d2e1f2390059ef8f7d97493f805">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, ScanOp scan_op, T &amp;aggregate)</td></tr>
-<tr class="memdesc:a03ec10d36d8fa96791a4b4ff1feb2dc1"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>.  <a href="#a03ec10d36d8fa96791a4b4ff1feb2dc1"></a><br/></td></tr>
+<tr class="memdesc:a03ec10d36d8fa96791a4b4ff1feb2dc1"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>.  <a href="#a03ec10d36d8fa96791a4b4ff1feb2dc1"></a><br/></td></tr>
 <tr class="separator:a03ec10d36d8fa96791a4b4ff1feb2dc1"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aefe56b0ed624e2b0f74d683730594f2f"><td class="memTemplParams" colspan="2">template&lt;int ITEMS_PER_THREAD, typename ScanOp &gt; </td></tr>
 <tr class="memitem:aefe56b0ed624e2b0f74d683730594f2f"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_scan.html#aefe56b0ed624e2b0f74d683730594f2f">InclusiveScan</a> (<a class="el" href="classcub_1_1_cta_scan.html#a98037d2e1f2390059ef8f7d97493f805">SmemStorage</a> &amp;smem_storage, T(&amp;input)[ITEMS_PER_THREAD], T(&amp;output)[ITEMS_PER_THREAD], ScanOp scan_op, T &amp;aggregate)</td></tr>
-<tr class="memdesc:aefe56b0ed624e2b0f74d683730594f2f"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>.  <a href="#aefe56b0ed624e2b0f74d683730594f2f"></a><br/></td></tr>
+<tr class="memdesc:aefe56b0ed624e2b0f74d683730594f2f"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>.  <a href="#aefe56b0ed624e2b0f74d683730594f2f"></a><br/></td></tr>
 <tr class="separator:aefe56b0ed624e2b0f74d683730594f2f"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a0a40b43a0c67d9d46fe88a78fec0e2a7"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp &gt; </td></tr>
 <tr class="memitem:a0a40b43a0c67d9d46fe88a78fec0e2a7"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_scan.html#a0a40b43a0c67d9d46fe88a78fec0e2a7">InclusiveScan</a> (<a class="el" href="classcub_1_1_cta_scan.html#a98037d2e1f2390059ef8f7d97493f805">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, ScanOp scan_op, T &amp;aggregate, T &amp;cta_prefix)</td></tr>
-<tr class="memdesc:a0a40b43a0c67d9d46fe88a78fec0e2a7"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. The <code>cta_prefix</code> value from thread<sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>.  <a href="#a0a40b43a0c67d9d46fe88a78fec0e2a7"></a><br/></td></tr>
+<tr class="memdesc:a0a40b43a0c67d9d46fe88a78fec0e2a7"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. The <code>cta_prefix</code> value from <em>thread</em><sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>.  <a href="#a0a40b43a0c67d9d46fe88a78fec0e2a7"></a><br/></td></tr>
 <tr class="separator:a0a40b43a0c67d9d46fe88a78fec0e2a7"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:abf434c7f057da57217c84c41188542aa"><td class="memTemplParams" colspan="2">template&lt;int ITEMS_PER_THREAD, typename ScanOp &gt; </td></tr>
 <tr class="memitem:abf434c7f057da57217c84c41188542aa"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_scan.html#abf434c7f057da57217c84c41188542aa">InclusiveScan</a> (<a class="el" href="classcub_1_1_cta_scan.html#a98037d2e1f2390059ef8f7d97493f805">SmemStorage</a> &amp;smem_storage, T(&amp;input)[ITEMS_PER_THREAD], T(&amp;output)[ITEMS_PER_THREAD], ScanOp scan_op, T &amp;aggregate, T &amp;cta_prefix)</td></tr>
-<tr class="memdesc:abf434c7f057da57217c84c41188542aa"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. The <code>cta_prefix</code> value from thread<sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>.  <a href="#abf434c7f057da57217c84c41188542aa"></a><br/></td></tr>
+<tr class="memdesc:abf434c7f057da57217c84c41188542aa"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. The <code>cta_prefix</code> value from <em>thread</em><sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>.  <a href="#abf434c7f057da57217c84c41188542aa"></a><br/></td></tr>
 <tr class="separator:abf434c7f057da57217c84c41188542aa"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ad573d224de4dabbd0c4eb2d82b6ed003"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp &gt; </td></tr>
 <tr class="memitem:ad573d224de4dabbd0c4eb2d82b6ed003"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
@@ -236,21 +236,21 @@ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a 
 <tr><td colspan="2"><div class="groupHeader">Inclusive prefix sums</div></td></tr>
 <tr class="memitem:a650a17f037b364dee89b57f109c8c949"><td class="memItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_scan.html#a650a17f037b364dee89b57f109c8c949">InclusiveSum</a> (<a class="el" href="classcub_1_1_cta_scan.html#a98037d2e1f2390059ef8f7d97493f805">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T &amp;aggregate)</td></tr>
-<tr class="memdesc:a650a17f037b364dee89b57f109c8c949"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>.  <a href="#a650a17f037b364dee89b57f109c8c949"></a><br/></td></tr>
+<tr class="memdesc:a650a17f037b364dee89b57f109c8c949"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>.  <a href="#a650a17f037b364dee89b57f109c8c949"></a><br/></td></tr>
 <tr class="separator:a650a17f037b364dee89b57f109c8c949"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a28360d55f757c32be6ddafc2bd546754"><td class="memTemplParams" colspan="2">template&lt;int ITEMS_PER_THREAD&gt; </td></tr>
 <tr class="memitem:a28360d55f757c32be6ddafc2bd546754"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_scan.html#a28360d55f757c32be6ddafc2bd546754">InclusiveSum</a> (<a class="el" href="classcub_1_1_cta_scan.html#a98037d2e1f2390059ef8f7d97493f805">SmemStorage</a> &amp;smem_storage, T(&amp;input)[ITEMS_PER_THREAD], T(&amp;output)[ITEMS_PER_THREAD], T &amp;aggregate)</td></tr>
-<tr class="memdesc:a28360d55f757c32be6ddafc2bd546754"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>.  <a href="#a28360d55f757c32be6ddafc2bd546754"></a><br/></td></tr>
+<tr class="memdesc:a28360d55f757c32be6ddafc2bd546754"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>.  <a href="#a28360d55f757c32be6ddafc2bd546754"></a><br/></td></tr>
 <tr class="separator:a28360d55f757c32be6ddafc2bd546754"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a7f005f96e78661db9863af10e5b09cd1"><td class="memItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_scan.html#a7f005f96e78661db9863af10e5b09cd1">InclusiveSum</a> (<a class="el" href="classcub_1_1_cta_scan.html#a98037d2e1f2390059ef8f7d97493f805">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T &amp;aggregate, T &amp;cta_prefix)</td></tr>
-<tr class="memdesc:a7f005f96e78661db9863af10e5b09cd1"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. The <code>cta_prefix</code> value from thread<sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>.  <a href="#a7f005f96e78661db9863af10e5b09cd1"></a><br/></td></tr>
+<tr class="memdesc:a7f005f96e78661db9863af10e5b09cd1"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. The <code>cta_prefix</code> value from <em>thread</em><sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>.  <a href="#a7f005f96e78661db9863af10e5b09cd1"></a><br/></td></tr>
 <tr class="separator:a7f005f96e78661db9863af10e5b09cd1"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a63a95f29d7773b8c879c40a88d92194e"><td class="memTemplParams" colspan="2">template&lt;int ITEMS_PER_THREAD&gt; </td></tr>
 <tr class="memitem:a63a95f29d7773b8c879c40a88d92194e"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_scan.html#a63a95f29d7773b8c879c40a88d92194e">InclusiveSum</a> (<a class="el" href="classcub_1_1_cta_scan.html#a98037d2e1f2390059ef8f7d97493f805">SmemStorage</a> &amp;smem_storage, T(&amp;input)[ITEMS_PER_THREAD], T(&amp;output)[ITEMS_PER_THREAD], T &amp;aggregate, T &amp;cta_prefix)</td></tr>
-<tr class="memdesc:a63a95f29d7773b8c879c40a88d92194e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. The <code>cta_prefix</code> value from thread<sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>.  <a href="#a63a95f29d7773b8c879c40a88d92194e"></a><br/></td></tr>
+<tr class="memdesc:a63a95f29d7773b8c879c40a88d92194e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. The <code>cta_prefix</code> value from <em>thread</em><sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>.  <a href="#a63a95f29d7773b8c879c40a88d92194e"></a><br/></td></tr>
 <tr class="separator:a63a95f29d7773b8c879c40a88d92194e"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ac24172ec9ebbeea5b96ce985ebf32886"><td class="memItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_scan.html#ac24172ec9ebbeea5b96ce985ebf32886">InclusiveSum</a> (<a class="el" href="classcub_1_1_cta_scan.html#a98037d2e1f2390059ef8f7d97493f805">SmemStorage</a> &amp;smem_storage, T input, T &amp;output)</td></tr>
@@ -294,7 +294,7 @@ class cub::CtaScan&lt; T, CTA_THREADS, POLICY &gt;</h3>
 <li><code>CTA_THREADS</code> is a multiple of the architecture's warp size</li>
 </ul>
 </li>
-<li>To minimize synchronization overhead for operations involving the cumulative <code>aggregate</code> and <code>cta_prefix</code>, these values are only valid in thread<sub>0</sub>.</li>
+<li>To minimize synchronization overhead for operations involving the cumulative <code>aggregate</code> and <code>cta_prefix</code>, these values are only valid in <em>thread</em><sub>0</sub>.</li>
 </ul>
 </dd></dl>
 <p><b>Algorithm</b> </p>
@@ -434,12 +434,12 @@ template&lt;typename ScanOp &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p>Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. </p>
-<p>The <code>aggregate</code> is undefined in threads other than thread<sub>0</sub>.</p>
+<p>Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>. </p>
+<p>The <code>aggregate</code> is undefined in threads other than <em>thread</em><sub>0</sub>.</p>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">ScanOp</td><td>[inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
+    <tr><td class="paramname">ScanOp</td><td><b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
   </table>
   </dd>
 </dl>
@@ -447,10 +447,10 @@ template&lt;typename ScanOp &gt; </div>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to input) </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">identity</td><td>Identity value. </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to <code>input</code>) </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">identity</td><td>Identity value </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">scan_op</td><td>Binary scan operator </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td>Total aggregate (valid in thread<sub>0</sub>). </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td><b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate </td></tr>
   </table>
   </dd>
 </dl>
@@ -517,13 +517,13 @@ template&lt;int ITEMS_PER_THREAD, typename ScanOp &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p>Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. </p>
-<p>The <code>aggregate</code> is undefined in threads other than thread<sub>0</sub>.</p>
+<p>Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>. </p>
+<p>The <code>aggregate</code> is undefined in threads other than <em>thread</em><sub>0</sub>.</p>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">ITEMS_PER_THREAD</td><td>[inferred] The number of consecutive items partitioned onto each thread. </td></tr>
-    <tr><td class="paramname">ScanOp</td><td>[inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
+    <tr><td class="paramname">ITEMS_PER_THREAD</td><td><b>[inferred]</b> The number of consecutive items partitioned onto each thread. </td></tr>
+    <tr><td class="paramname">ScanOp</td><td><b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
   </table>
   </dd>
 </dl>
@@ -531,10 +531,10 @@ template&lt;int ITEMS_PER_THREAD, typename ScanOp &gt; </div>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to input) </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">identity</td><td>Identity value. </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to <code>input</code>) </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">identity</td><td>Identity value </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">scan_op</td><td>Binary scan operator </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td>Total aggregate (valid in thread<sub>0</sub>). </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td><b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate </td></tr>
   </table>
   </dd>
 </dl>
@@ -607,12 +607,12 @@ template&lt;typename ScanOp &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p>Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. The <code>cta_prefix</code> value from thread<sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>. </p>
-<p>The <code>aggregate</code> and <code>cta_prefix</code> are undefined in threads other than thread<sub>0</sub>.</p>
+<p>Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. The <code>cta_prefix</code> value from <em>thread</em><sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>. </p>
+<p>The <code>aggregate</code> and <code>cta_prefix</code> are undefined in threads other than <em>thread</em><sub>0</sub>.</p>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">ScanOp</td><td>[inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
+    <tr><td class="paramname">ScanOp</td><td><b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
   </table>
   </dd>
 </dl>
@@ -620,11 +620,11 @@ template&lt;typename ScanOp &gt; </div>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to input) </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">identity</td><td>Identity value. </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to <code>input</code>) </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">identity</td><td>Identity value </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">scan_op</td><td>Binary scan operator </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td>Total aggregate (valid in thread<sub>0</sub>). </td></tr>
-    <tr><td class="paramdir">[in,out]</td><td class="paramname">cta_prefix</td><td>Cta-wide prefix to scan (valid in thread<sub>0</sub>). </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td><b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate </td></tr>
+    <tr><td class="paramdir">[in,out]</td><td class="paramname">cta_prefix</td><td><b>[<em>thread</em><sub>0</sub> only]</b> Cta-wide prefix to scan </td></tr>
   </table>
   </dd>
 </dl>
@@ -697,13 +697,13 @@ template&lt;int ITEMS_PER_THREAD, typename ScanOp &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p>Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. The <code>cta_prefix</code> value from thread<sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>. </p>
-<p>The <code>aggregate</code> and <code>cta_prefix</code> are undefined in threads other than thread<sub>0</sub>.</p>
+<p>Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. The <code>cta_prefix</code> value from <em>thread</em><sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>. </p>
+<p>The <code>aggregate</code> and <code>cta_prefix</code> are undefined in threads other than <em>thread</em><sub>0</sub>.</p>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">ITEMS_PER_THREAD</td><td>[inferred] The number of consecutive items partitioned onto each thread. </td></tr>
-    <tr><td class="paramname">ScanOp</td><td>[inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
+    <tr><td class="paramname">ITEMS_PER_THREAD</td><td><b>[inferred]</b> The number of consecutive items partitioned onto each thread. </td></tr>
+    <tr><td class="paramname">ScanOp</td><td><b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
   </table>
   </dd>
 </dl>
@@ -711,11 +711,11 @@ template&lt;int ITEMS_PER_THREAD, typename ScanOp &gt; </div>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to input) </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">identity</td><td>Identity value. </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to <code>input</code>) </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">identity</td><td>Identity value </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">scan_op</td><td>Binary scan operator </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td>Total aggregate (valid in thread<sub>0</sub>). </td></tr>
-    <tr><td class="paramdir">[in,out]</td><td class="paramname">cta_prefix</td><td>Cta-wide prefix to scan (valid in thread<sub>0</sub>). </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td><b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate </td></tr>
+    <tr><td class="paramdir">[in,out]</td><td class="paramname">cta_prefix</td><td><b>[<em>thread</em><sub>0</sub> only]</b> Cta-wide prefix to scan </td></tr>
   </table>
   </dd>
 </dl>
@@ -780,7 +780,7 @@ template&lt;typename ScanOp &gt; </div>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">ScanOp</td><td>[inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
+    <tr><td class="paramname">ScanOp</td><td><b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
   </table>
   </dd>
 </dl>
@@ -788,8 +788,8 @@ template&lt;typename ScanOp &gt; </div>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to input) </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">identity</td><td>Identity value. </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to <code>input</code>) </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">identity</td><td>Identity value </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">scan_op</td><td>Binary scan operator </td></tr>
   </table>
   </dd>
@@ -855,8 +855,8 @@ template&lt;int ITEMS_PER_THREAD, typename ScanOp &gt; </div>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">ITEMS_PER_THREAD</td><td>[inferred] The number of consecutive items partitioned onto each thread. </td></tr>
-    <tr><td class="paramname">ScanOp</td><td>[inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
+    <tr><td class="paramname">ITEMS_PER_THREAD</td><td><b>[inferred]</b> The number of consecutive items partitioned onto each thread. </td></tr>
+    <tr><td class="paramname">ScanOp</td><td><b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
   </table>
   </dd>
 </dl>
@@ -864,8 +864,8 @@ template&lt;int ITEMS_PER_THREAD, typename ScanOp &gt; </div>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to input) </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">identity</td><td>Identity value. </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to <code>input</code>) </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">identity</td><td>Identity value </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">scan_op</td><td>Binary scan operator </td></tr>
   </table>
   </dd>
@@ -927,12 +927,12 @@ template&lt;typename ScanOp &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p>Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. With no identity value, the output computed for thread<sub>0</sub> is invalid. </p>
-<p>The <code>aggregate</code> is undefined in threads other than thread<sub>0</sub>.</p>
+<p>Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>. With no identity value, the output computed for <em>thread</em><sub>0</sub> is invalid. </p>
+<p>The <code>aggregate</code> is undefined in threads other than <em>thread</em><sub>0</sub>.</p>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">ScanOp</td><td>[inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
+    <tr><td class="paramname">ScanOp</td><td><b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
   </table>
   </dd>
 </dl>
@@ -940,9 +940,9 @@ template&lt;typename ScanOp &gt; </div>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to input) </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to <code>input</code>) </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">scan_op</td><td>Binary scan operator </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td>Total aggregate (valid in thread<sub>0</sub>). </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td><b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate </td></tr>
   </table>
   </dd>
 </dl>
@@ -1003,13 +1003,13 @@ template&lt;int ITEMS_PER_THREAD, typename ScanOp &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p>Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. With no identity value, the output computed for thread<sub>0</sub> is invalid. </p>
-<p>The <code>aggregate</code> is undefined in threads other than thread<sub>0</sub>.</p>
+<p>Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>. With no identity value, the output computed for <em>thread</em><sub>0</sub> is invalid. </p>
+<p>The <code>aggregate</code> is undefined in threads other than <em>thread</em><sub>0</sub>.</p>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">ITEMS_PER_THREAD</td><td>[inferred] The number of consecutive items partitioned onto each thread. </td></tr>
-    <tr><td class="paramname">ScanOp</td><td>[inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
+    <tr><td class="paramname">ITEMS_PER_THREAD</td><td><b>[inferred]</b> The number of consecutive items partitioned onto each thread. </td></tr>
+    <tr><td class="paramname">ScanOp</td><td><b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
   </table>
   </dd>
 </dl>
@@ -1017,9 +1017,9 @@ template&lt;int ITEMS_PER_THREAD, typename ScanOp &gt; </div>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to input) </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to <code>input</code>) </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">scan_op</td><td>Binary scan operator </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td>Total aggregate (valid in thread<sub>0</sub>). </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td><b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate </td></tr>
   </table>
   </dd>
 </dl>
@@ -1086,12 +1086,12 @@ template&lt;typename ScanOp &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p>Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. The <code>cta_prefix</code> value from thread<sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>. With no identity value, the output computed for thread<sub>0</sub> is invalid. </p>
-<p>The <code>aggregate</code> and <code>cta_prefix</code> are undefined in threads other than thread<sub>0</sub>.</p>
+<p>Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. The <code>cta_prefix</code> value from <em>thread</em><sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>. With no identity value, the output computed for <em>thread</em><sub>0</sub> is invalid. </p>
+<p>The <code>aggregate</code> and <code>cta_prefix</code> are undefined in threads other than <em>thread</em><sub>0</sub>.</p>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">ScanOp</td><td>[inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
+    <tr><td class="paramname">ScanOp</td><td><b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
   </table>
   </dd>
 </dl>
@@ -1099,10 +1099,10 @@ template&lt;typename ScanOp &gt; </div>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to input) </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to <code>input</code>) </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">scan_op</td><td>Binary scan operator </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td>Total aggregate (valid in thread<sub>0</sub>). </td></tr>
-    <tr><td class="paramdir">[in,out]</td><td class="paramname">cta_prefix</td><td>Cta-wide prefix to scan (valid in thread<sub>0</sub>). </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td><b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate </td></tr>
+    <tr><td class="paramdir">[in,out]</td><td class="paramname">cta_prefix</td><td><b>[<em>thread</em><sub>0</sub> only]</b> Cta-wide prefix to scan </td></tr>
   </table>
   </dd>
 </dl>
@@ -1169,13 +1169,13 @@ template&lt;int ITEMS_PER_THREAD, typename ScanOp &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p>Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. The <code>cta_prefix</code> value from thread<sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>. With no identity value, the output computed for thread<sub>0</sub> is invalid. </p>
-<p>The <code>aggregate</code> and <code>cta_prefix</code> are undefined in threads other than thread<sub>0</sub>.</p>
+<p>Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. The <code>cta_prefix</code> value from <em>thread</em><sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>. With no identity value, the output computed for <em>thread</em><sub>0</sub> is invalid. </p>
+<p>The <code>aggregate</code> and <code>cta_prefix</code> are undefined in threads other than <em>thread</em><sub>0</sub>.</p>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">ITEMS_PER_THREAD</td><td>[inferred] The number of consecutive items partitioned onto each thread. </td></tr>
-    <tr><td class="paramname">ScanOp</td><td>[inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
+    <tr><td class="paramname">ITEMS_PER_THREAD</td><td><b>[inferred]</b> The number of consecutive items partitioned onto each thread. </td></tr>
+    <tr><td class="paramname">ScanOp</td><td><b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
   </table>
   </dd>
 </dl>
@@ -1183,10 +1183,10 @@ template&lt;int ITEMS_PER_THREAD, typename ScanOp &gt; </div>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to input) </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to <code>input</code>) </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">scan_op</td><td>Binary scan operator </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td>Total aggregate (valid in thread<sub>0</sub>). </td></tr>
-    <tr><td class="paramdir">[in,out]</td><td class="paramname">cta_prefix</td><td>Cta-wide prefix to scan (valid in thread<sub>0</sub>). </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td><b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate </td></tr>
+    <tr><td class="paramdir">[in,out]</td><td class="paramname">cta_prefix</td><td><b>[<em>thread</em><sub>0</sub> only]</b> Cta-wide prefix to scan </td></tr>
   </table>
   </dd>
 </dl>
@@ -1241,11 +1241,11 @@ template&lt;typename ScanOp &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p>Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. With no identity value, the output computed for thread<sub>0</sub> is invalid. </p>
+<p>Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. With no identity value, the output computed for <em>thread</em><sub>0</sub> is invalid. </p>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">ScanOp</td><td>[inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
+    <tr><td class="paramname">ScanOp</td><td><b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
   </table>
   </dd>
 </dl>
@@ -1253,7 +1253,7 @@ template&lt;typename ScanOp &gt; </div>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to input) </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to <code>input</code>) </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">scan_op</td><td>Binary scan operator </td></tr>
   </table>
   </dd>
@@ -1309,12 +1309,12 @@ template&lt;int ITEMS_PER_THREAD, typename ScanOp &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p>Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. With no identity value, the output computed for thread<sub>0</sub> is invalid. </p>
+<p>Computes an exclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. With no identity value, the output computed for <em>thread</em><sub>0</sub> is invalid. </p>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">ITEMS_PER_THREAD</td><td>[inferred] The number of consecutive items partitioned onto each thread. </td></tr>
-    <tr><td class="paramname">ScanOp</td><td>[inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
+    <tr><td class="paramname">ITEMS_PER_THREAD</td><td><b>[inferred]</b> The number of consecutive items partitioned onto each thread. </td></tr>
+    <tr><td class="paramname">ScanOp</td><td><b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
   </table>
   </dd>
 </dl>
@@ -1322,7 +1322,7 @@ template&lt;int ITEMS_PER_THREAD, typename ScanOp &gt; </div>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to input) </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to <code>input</code>) </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">scan_op</td><td>Binary scan operator </td></tr>
   </table>
   </dd>
@@ -1376,15 +1376,15 @@ template&lt;typename T , int CTA_THREADS, CtaScanPolicy POLICY = CTA_SCAN_RAKING
 </table>
 </div><div class="memdoc">
 
-<p>Computes an exclusive CTA-wide prefix scan using addition (+) as the scan operator. Each thread contributes one input element. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. </p>
-<p>The <code>aggregate</code> is undefined in threads other than thread<sub>0</sub>.</p>
+<p>Computes an exclusive CTA-wide prefix scan using addition (+) as the scan operator. Each thread contributes one input element. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>. </p>
+<p>The <code>aggregate</code> is undefined in threads other than <em>thread</em><sub>0</sub>.</p>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to input) </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td>Total aggregate (valid in thread<sub>0</sub>). </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to <code>input</code>) </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td><b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate </td></tr>
   </table>
   </dd>
 </dl>
@@ -1439,12 +1439,12 @@ template&lt;int ITEMS_PER_THREAD&gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p>Computes an exclusive CTA-wide prefix scan using addition (+) as the scan operator. Each thread contributes an array of consecutive input elements. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. </p>
-<p>The <code>aggregate</code> is undefined in threads other than thread<sub>0</sub>.</p>
+<p>Computes an exclusive CTA-wide prefix scan using addition (+) as the scan operator. Each thread contributes an array of consecutive input elements. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>. </p>
+<p>The <code>aggregate</code> is undefined in threads other than <em>thread</em><sub>0</sub>.</p>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">ITEMS_PER_THREAD</td><td>[inferred] The number of consecutive items partitioned onto each thread. </td></tr>
+    <tr><td class="paramname">ITEMS_PER_THREAD</td><td><b>[inferred]</b> The number of consecutive items partitioned onto each thread. </td></tr>
   </table>
   </dd>
 </dl>
@@ -1452,8 +1452,8 @@ template&lt;int ITEMS_PER_THREAD&gt; </div>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to input) </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td>Total aggregate (valid in thread<sub>0</sub>). </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to <code>input</code>) </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td><b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate </td></tr>
   </table>
   </dd>
 </dl>
@@ -1512,16 +1512,16 @@ template&lt;typename T , int CTA_THREADS, CtaScanPolicy POLICY = CTA_SCAN_RAKING
 </table>
 </div><div class="memdoc">
 
-<p>Computes an exclusive CTA-wide prefix scan using addition (+) as the scan operator. Each thread contributes one input element. The <code>cta_prefix</code> value from thread<sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>. </p>
-<p>The <code>aggregate</code> and <code>cta_prefix</code> are undefined in threads other than thread<sub>0</sub>.</p>
+<p>Computes an exclusive CTA-wide prefix scan using addition (+) as the scan operator. Each thread contributes one input element. The <code>cta_prefix</code> value from <em>thread</em><sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>. </p>
+<p>The <code>aggregate</code> and <code>cta_prefix</code> are undefined in threads other than <em>thread</em><sub>0</sub>.</p>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to input) </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td>Total aggregate (valid in thread<sub>0</sub>). </td></tr>
-    <tr><td class="paramdir">[in,out]</td><td class="paramname">cta_prefix</td><td>Cta-wide prefix to scan (valid in thread<sub>0</sub>). </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to <code>input</code>) </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td><b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate </td></tr>
+    <tr><td class="paramdir">[in,out]</td><td class="paramname">cta_prefix</td><td><b>[<em>thread</em><sub>0</sub> only]</b> Cta-wide prefix to scan </td></tr>
   </table>
   </dd>
 </dl>
@@ -1582,12 +1582,12 @@ template&lt;int ITEMS_PER_THREAD&gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p>Computes an exclusive CTA-wide prefix scan using addition (+) as the scan operator. Each thread contributes an array of consecutive input elements. The <code>cta_prefix</code> value from thread<sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>. </p>
-<p>The <code>aggregate</code> and <code>cta_prefix</code> are undefined in threads other than thread<sub>0</sub>.</p>
+<p>Computes an exclusive CTA-wide prefix scan using addition (+) as the scan operator. Each thread contributes an array of consecutive input elements. The <code>cta_prefix</code> value from <em>thread</em><sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>. </p>
+<p>The <code>aggregate</code> and <code>cta_prefix</code> are undefined in threads other than <em>thread</em><sub>0</sub>.</p>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">ITEMS_PER_THREAD</td><td>[inferred] The number of consecutive items partitioned onto each thread. </td></tr>
+    <tr><td class="paramname">ITEMS_PER_THREAD</td><td><b>[inferred]</b> The number of consecutive items partitioned onto each thread. </td></tr>
   </table>
   </dd>
 </dl>
@@ -1595,9 +1595,9 @@ template&lt;int ITEMS_PER_THREAD&gt; </div>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to input) </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td>Total aggregate (valid in thread<sub>0</sub>). </td></tr>
-    <tr><td class="paramdir">[in,out]</td><td class="paramname">cta_prefix</td><td>Cta-wide prefix to scan (valid in thread<sub>0</sub>). </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to <code>input</code>) </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td><b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate </td></tr>
+    <tr><td class="paramdir">[in,out]</td><td class="paramname">cta_prefix</td><td><b>[<em>thread</em><sub>0</sub> only]</b> Cta-wide prefix to scan </td></tr>
   </table>
   </dd>
 </dl>
@@ -1650,7 +1650,7 @@ template&lt;typename T , int CTA_THREADS, CtaScanPolicy POLICY = CTA_SCAN_RAKING
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to input) </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to <code>input</code>) </td></tr>
   </table>
   </dd>
 </dl>
@@ -1703,7 +1703,7 @@ template&lt;int ITEMS_PER_THREAD&gt; </div>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">ITEMS_PER_THREAD</td><td>[inferred] The number of consecutive items partitioned onto each thread. </td></tr>
+    <tr><td class="paramname">ITEMS_PER_THREAD</td><td><b>[inferred]</b> The number of consecutive items partitioned onto each thread. </td></tr>
   </table>
   </dd>
 </dl>
@@ -1711,7 +1711,7 @@ template&lt;int ITEMS_PER_THREAD&gt; </div>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to input) </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to <code>input</code>) </td></tr>
   </table>
   </dd>
 </dl>
@@ -1772,12 +1772,12 @@ template&lt;typename ScanOp &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p>Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. </p>
-<p>The <code>aggregate</code> is undefined in threads other than thread<sub>0</sub>.</p>
+<p>Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>. </p>
+<p>The <code>aggregate</code> is undefined in threads other than <em>thread</em><sub>0</sub>.</p>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">ScanOp</td><td>[inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
+    <tr><td class="paramname">ScanOp</td><td><b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
   </table>
   </dd>
 </dl>
@@ -1785,9 +1785,9 @@ template&lt;typename ScanOp &gt; </div>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to input) </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to <code>input</code>) </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">scan_op</td><td>Binary scan operator </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td>Total aggregate (valid in thread<sub>0</sub>). </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td><b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate </td></tr>
   </table>
   </dd>
 </dl>
@@ -1848,13 +1848,13 @@ template&lt;int ITEMS_PER_THREAD, typename ScanOp &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p>Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. </p>
-<p>The <code>aggregate</code> is undefined in threads other than thread<sub>0</sub>.</p>
+<p>Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>. </p>
+<p>The <code>aggregate</code> is undefined in threads other than <em>thread</em><sub>0</sub>.</p>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">ITEMS_PER_THREAD</td><td>[inferred] The number of consecutive items partitioned onto each thread. </td></tr>
-    <tr><td class="paramname">ScanOp</td><td>[inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
+    <tr><td class="paramname">ITEMS_PER_THREAD</td><td><b>[inferred]</b> The number of consecutive items partitioned onto each thread. </td></tr>
+    <tr><td class="paramname">ScanOp</td><td><b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
   </table>
   </dd>
 </dl>
@@ -1862,9 +1862,9 @@ template&lt;int ITEMS_PER_THREAD, typename ScanOp &gt; </div>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to input) </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to <code>input</code>) </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">scan_op</td><td>Binary scan operator </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td>Total aggregate (valid in thread<sub>0</sub>). </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td><b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate </td></tr>
   </table>
   </dd>
 </dl>
@@ -1931,12 +1931,12 @@ template&lt;typename ScanOp &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p>Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. The <code>cta_prefix</code> value from thread<sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>. </p>
-<p>The <code>aggregate</code> and <code>cta_prefix</code> are undefined in threads other than thread<sub>0</sub>.</p>
+<p>Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. The <code>cta_prefix</code> value from <em>thread</em><sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>. </p>
+<p>The <code>aggregate</code> and <code>cta_prefix</code> are undefined in threads other than <em>thread</em><sub>0</sub>.</p>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">ScanOp</td><td>[inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
+    <tr><td class="paramname">ScanOp</td><td><b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
   </table>
   </dd>
 </dl>
@@ -1944,10 +1944,10 @@ template&lt;typename ScanOp &gt; </div>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to input) </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to <code>input</code>) </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">scan_op</td><td>Binary scan operator </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td>Total aggregate (valid in thread<sub>0</sub>). </td></tr>
-    <tr><td class="paramdir">[in,out]</td><td class="paramname">cta_prefix</td><td>Cta-wide prefix to scan (valid in thread<sub>0</sub>). </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td><b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate </td></tr>
+    <tr><td class="paramdir">[in,out]</td><td class="paramname">cta_prefix</td><td><b>[<em>thread</em><sub>0</sub> only]</b> Cta-wide prefix to scan </td></tr>
   </table>
   </dd>
 </dl>
@@ -2014,13 +2014,13 @@ template&lt;int ITEMS_PER_THREAD, typename ScanOp &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p>Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. The <code>cta_prefix</code> value from thread<sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>. </p>
-<p>The <code>aggregate</code> and <code>cta_prefix</code> are undefined in threads other than thread<sub>0</sub>.</p>
+<p>Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. The <code>cta_prefix</code> value from <em>thread</em><sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>. </p>
+<p>The <code>aggregate</code> and <code>cta_prefix</code> are undefined in threads other than <em>thread</em><sub>0</sub>.</p>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">ITEMS_PER_THREAD</td><td>[inferred] The number of consecutive items partitioned onto each thread. </td></tr>
-    <tr><td class="paramname">ScanOp</td><td>[inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
+    <tr><td class="paramname">ITEMS_PER_THREAD</td><td><b>[inferred]</b> The number of consecutive items partitioned onto each thread. </td></tr>
+    <tr><td class="paramname">ScanOp</td><td><b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
   </table>
   </dd>
 </dl>
@@ -2028,10 +2028,10 @@ template&lt;int ITEMS_PER_THREAD, typename ScanOp &gt; </div>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to input) </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to <code>input</code>) </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">scan_op</td><td>Binary scan operator </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td>Total aggregate (valid in thread<sub>0</sub>). </td></tr>
-    <tr><td class="paramdir">[in,out]</td><td class="paramname">cta_prefix</td><td>Cta-wide prefix to scan (valid in thread<sub>0</sub>). </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td><b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate </td></tr>
+    <tr><td class="paramdir">[in,out]</td><td class="paramname">cta_prefix</td><td><b>[<em>thread</em><sub>0</sub> only]</b> Cta-wide prefix to scan </td></tr>
   </table>
   </dd>
 </dl>
@@ -2090,7 +2090,7 @@ template&lt;typename ScanOp &gt; </div>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">ScanOp</td><td>[inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
+    <tr><td class="paramname">ScanOp</td><td><b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
   </table>
   </dd>
 </dl>
@@ -2098,7 +2098,7 @@ template&lt;typename ScanOp &gt; </div>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to input) </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to <code>input</code>) </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">scan_op</td><td>Binary scan operator </td></tr>
   </table>
   </dd>
@@ -2158,8 +2158,8 @@ template&lt;int ITEMS_PER_THREAD, typename ScanOp &gt; </div>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">ITEMS_PER_THREAD</td><td>[inferred] The number of consecutive items partitioned onto each thread. </td></tr>
-    <tr><td class="paramname">ScanOp</td><td>[inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
+    <tr><td class="paramname">ITEMS_PER_THREAD</td><td><b>[inferred]</b> The number of consecutive items partitioned onto each thread. </td></tr>
+    <tr><td class="paramname">ScanOp</td><td><b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
   </table>
   </dd>
 </dl>
@@ -2167,7 +2167,7 @@ template&lt;int ITEMS_PER_THREAD, typename ScanOp &gt; </div>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to input) </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to <code>input</code>) </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">scan_op</td><td>Binary scan operator </td></tr>
   </table>
   </dd>
@@ -2221,15 +2221,15 @@ template&lt;typename T , int CTA_THREADS, CtaScanPolicy POLICY = CTA_SCAN_RAKING
 </table>
 </div><div class="memdoc">
 
-<p>Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. </p>
-<p>The <code>aggregate</code> is undefined in threads other than thread<sub>0</sub>.</p>
+<p>Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>. </p>
+<p>The <code>aggregate</code> is undefined in threads other than <em>thread</em><sub>0</sub>.</p>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to input) </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td>Total aggregate (valid in thread<sub>0</sub>). </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to <code>input</code>) </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td><b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate </td></tr>
   </table>
   </dd>
 </dl>
@@ -2284,13 +2284,13 @@ template&lt;int ITEMS_PER_THREAD&gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p>Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. </p>
-<p>The <code>aggregate</code> is undefined in threads other than thread<sub>0</sub>.</p>
+<p>Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>. </p>
+<p>The <code>aggregate</code> is undefined in threads other than <em>thread</em><sub>0</sub>.</p>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">ITEMS_PER_THREAD</td><td>[inferred] The number of consecutive items partitioned onto each thread. </td></tr>
-    <tr><td class="paramname">ScanOp</td><td>[inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
+    <tr><td class="paramname">ITEMS_PER_THREAD</td><td><b>[inferred]</b> The number of consecutive items partitioned onto each thread. </td></tr>
+    <tr><td class="paramname">ScanOp</td><td><b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
   </table>
   </dd>
 </dl>
@@ -2298,8 +2298,8 @@ template&lt;int ITEMS_PER_THREAD&gt; </div>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to input) </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td>Total aggregate (valid in thread<sub>0</sub>). </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to <code>input</code>) </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td><b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate </td></tr>
   </table>
   </dd>
 </dl>
@@ -2358,16 +2358,16 @@ template&lt;typename T , int CTA_THREADS, CtaScanPolicy POLICY = CTA_SCAN_RAKING
 </table>
 </div><div class="memdoc">
 
-<p>Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. The <code>cta_prefix</code> value from thread<sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>. </p>
-<p>The <code>aggregate</code> and <code>cta_prefix</code> are undefined in threads other than thread<sub>0</sub>.</p>
+<p>Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. The <code>cta_prefix</code> value from <em>thread</em><sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>. </p>
+<p>The <code>aggregate</code> and <code>cta_prefix</code> are undefined in threads other than <em>thread</em><sub>0</sub>.</p>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to input) </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td>Total aggregate (valid in thread<sub>0</sub>). </td></tr>
-    <tr><td class="paramdir">[in,out]</td><td class="paramname">cta_prefix</td><td>Cta-wide prefix to scan (valid in thread<sub>0</sub>). </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to <code>input</code>) </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td><b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate </td></tr>
+    <tr><td class="paramdir">[in,out]</td><td class="paramname">cta_prefix</td><td><b>[<em>thread</em><sub>0</sub> only]</b> Cta-wide prefix to scan </td></tr>
   </table>
   </dd>
 </dl>
@@ -2428,12 +2428,12 @@ template&lt;int ITEMS_PER_THREAD&gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p>Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. The <code>cta_prefix</code> value from thread<sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>. </p>
-<p>The <code>aggregate</code> and <code>cta_prefix</code> are undefined in threads other than thread<sub>0</sub>.</p>
+<p>Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. The <code>cta_prefix</code> value from <em>thread</em><sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for <em>thread</em><sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>. </p>
+<p>The <code>aggregate</code> and <code>cta_prefix</code> are undefined in threads other than <em>thread</em><sub>0</sub>.</p>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">ITEMS_PER_THREAD</td><td>[inferred] The number of consecutive items partitioned onto each thread. </td></tr>
+    <tr><td class="paramname">ITEMS_PER_THREAD</td><td><b>[inferred]</b> The number of consecutive items partitioned onto each thread. </td></tr>
   </table>
   </dd>
 </dl>
@@ -2441,9 +2441,9 @@ template&lt;int ITEMS_PER_THREAD&gt; </div>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to input) </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td>Total aggregate (valid in thread<sub>0</sub>). </td></tr>
-    <tr><td class="paramdir">[in,out]</td><td class="paramname">cta_prefix</td><td>Cta-wide prefix to scan (valid in thread<sub>0</sub>). </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to <code>input</code>) </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td><b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate </td></tr>
+    <tr><td class="paramdir">[in,out]</td><td class="paramname">cta_prefix</td><td><b>[<em>thread</em><sub>0</sub> only]</b> Cta-wide prefix to scan </td></tr>
   </table>
   </dd>
 </dl>
@@ -2496,7 +2496,7 @@ template&lt;typename T , int CTA_THREADS, CtaScanPolicy POLICY = CTA_SCAN_RAKING
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to input) </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to <code>input</code>) </td></tr>
   </table>
   </dd>
 </dl>
@@ -2549,8 +2549,8 @@ template&lt;int ITEMS_PER_THREAD&gt; </div>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">ITEMS_PER_THREAD</td><td>[inferred] The number of consecutive items partitioned onto each thread. </td></tr>
-    <tr><td class="paramname">ScanOp</td><td>[inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
+    <tr><td class="paramname">ITEMS_PER_THREAD</td><td><b>[inferred]</b> The number of consecutive items partitioned onto each thread. </td></tr>
+    <tr><td class="paramname">ScanOp</td><td><b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>). </td></tr>
   </table>
   </dd>
 </dl>
@@ -2558,7 +2558,7 @@ template&lt;int ITEMS_PER_THREAD&gt; </div>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to input) </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Output (may be aliased to <code>input</code>) </td></tr>
   </table>
   </dd>
 </dl>
@@ -2571,7 +2571,7 @@ template&lt;int ITEMS_PER_THREAD&gt; </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Mon Nov 26 2012 16:36:25 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
+Generated on Tue Nov 27 2012 13:01:46 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
 <img class="footer" src="doxygen.png" alt="doxygen"/>
 </a> 1.8.2
 </small></address>

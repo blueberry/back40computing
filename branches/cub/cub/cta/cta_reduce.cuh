@@ -319,7 +319,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items partitioned onto each thread.
+     * \tparam ITEMS_PER_THREAD     <b>[inferred]</b> The number of consecutive items partitioned onto each thread.
      */
     template <int ITEMS_PER_THREAD>
     static __device__ __forceinline__ T Reduce(
@@ -362,7 +362,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ReductionOp          [inferred] Binary reduction functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ReductionOp          <b>[inferred]</b> Binary reduction functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <typename ReductionOp>
     static __device__ __forceinline__ T Reduce(
@@ -381,8 +381,8 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items partitioned onto each thread.
-     * \tparam ReductionOp          [inferred] Binary reduction functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ITEMS_PER_THREAD     <b>[inferred]</b> The number of consecutive items partitioned onto each thread.
+     * \tparam ReductionOp          <b>[inferred]</b> Binary reduction functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <
         int ITEMS_PER_THREAD,
@@ -405,7 +405,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ReductionOp          [inferred] Binary reduction functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ReductionOp          <b>[inferred]</b> Binary reduction functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <typename ReductionOp>
     static __device__ __forceinline__ T Reduce(

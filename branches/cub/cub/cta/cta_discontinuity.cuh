@@ -41,7 +41,7 @@ namespace cub {
 
 
 /**
- * \brief The CtaDiscontinuity type provides operations for flagging discontinuities within a list of data items partitioned across CTA threads.
+ * \brief The CtaDiscontinuity type provides operations for flagging discontinuities within a list of data items partitioned across CTA threads. ![](discont_logo.png)
  *
  * <b>Overview</b>
  * \par
@@ -50,7 +50,6 @@ namespace cub {
  *
  * \tparam T                    The data type to be exchanged.
  * \tparam CTA_THREADS          The CTA size in threads.
- * \tparam ITEMS_PER_THREAD     The number of items partitioned onto each thread.
  *
  * <b>Important Features and Considerations</b>
  * \par
@@ -60,8 +59,8 @@ namespace cub {
  *
  */
 template <
-	int 		CTA_THREADS,			// The CTA size in threads
-	typename 	T>						// The input type for which we are detecting duplicates
+    typename    T,
+	int 		CTA_THREADS>
 class CtaDiscontinuity
 {
 private:
@@ -87,21 +86,23 @@ public:
 
 
     /**
-     * \brief Sets discontinuity flags for a tile of CTA items.
+     * \brief Sets discontinuity flags for a tile of CTA items, for which the first item has no reference (and is always flagged).
      *
      * Assuming a <em>blocked</em> arrangement of elements across threads,
      * <tt>flags</tt><sub><em>i</em></sub> is set non-zero for item
-     * <tt>input<sub><em>i</em></sub></tt> when <tt>scan_op(</tt><em>previous-item</em>, <tt>input<sub><em>i</em></sub>)</tt>
+     * <tt>input</tt><sub><em>i</em></sub> when <tt>scan_op(</tt><em>previous-item</em>, <tt>input<sub><em>i</em></sub>)</tt>
      * is \p true (where <em>previous-item</em> is either <tt>input<sub><em>i-1</em></sub></tt>,
      * or <tt>input<sub><em>ITEMS_PER_THREAD</em>-1</sub></tt> in the previous thread).  Furthermore,
-     * <tt>flags</tt><sub><em>i</em></sub> is always zero for <tt>input<sub>0</sub></tt>
-     * in thread<sub>0</sub>.  The last item of the last thread is also returned to thread<sub>0</sub>.
+     * <tt>flags</tt><sub><em>i</em></sub> is always non-zero for <tt>input<sub>0</sub></tt>
+     * in <em>thread</em><sub>0</sub>.  The last tile item of the last thread is also returned to thread<sub>0</sub>.
+     *
+     * The \p last_tile_item is undefined in threads other than <em>thread</em><sub>0</sub>.
      *
      * \smemreuse
      *
-     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items partitioned onto each thread.
-     * \tparam Flag                 [inferred] The flag type (must be an integer type)
-     * \tparam FlagOp               [inferred] Binary boolean functor type, having input parameters <tt>T a, b</tt> and returning \p true if a discontinuity exists between \p a and \p b, otherwise \p false.
+     * \tparam ITEMS_PER_THREAD     <b>[inferred]</b> The number of consecutive items partitioned onto each thread.
+     * \tparam Flag                 <b>[inferred]</b> The flag type (must be an integer type)
+     * \tparam FlagOp               <b>[inferred]</b> Binary boolean functor type, having input parameters <tt>(const T &a, const T &b)</tt> and returning \p true if a discontinuity exists between \p a and \p b, otherwise \p false.
      */
     template <
         int             ITEMS_PER_THREAD,
@@ -112,10 +113,92 @@ public:
         T               (&input)[ITEMS_PER_THREAD],     ///< [in] Input items
         FlagOp          flag_op,                        ///< [in] Binary boolean flag predicate
         Flag            (&flags)[ITEMS_PER_THREAD],     ///< [out] Discontinuity flags
-        T               &last_item)                     ///< [out] Last item of last thread (valid only in thread<sub>0</sub>)
+        T               &last_tile_item)                ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> The last tile item (<tt>input<sub><em>ITEMS_PER_THREAD</em>-1</sub></tt> from thread<sub><tt><em>CTA_THREADS</em></tt>-1</sub>)
     {
+        // Share last item
+        smem_storage.last_items[threadIdx.x] = input[ITEMS_PER_THERAD - 1];
+
+        __syncthreads();
+
+        // Set flag for first item
+        if (threadIdx.x == 0)
+        {
+            flags[0] = 1;
+            last_tile_item = smem_storage.last_items[CTA_THREADS - 1];
+        }
+        else
+        {
+            flags[0] = flag_op(last_items[threadIdx.x - 1], input[0]);
+        }
+
+
+        // Set flags for remaining items
+        #pragma unroll
+        for (int ITEM = 1; ITEM < ITEMS_PER_THREAD; ITEM++)
+        {
+            flags[ITEM] = flag_op(input[ITEM - 1], input[ITEM]);
+        }
     }
 
+
+    /**
+     * \brief Sets discontinuity flags for a tile of CTA items.
+     *
+     * Assuming a <em>blocked</em> arrangement of elements across threads,
+     * <tt>flags</tt><sub><em>i</em></sub> is set non-zero for item
+     * <tt>input</tt><sub><em>i</em></sub> when <tt>scan_op(</tt><em>previous-item</em>, <tt>input<sub><em>i</em></sub>)</tt>
+     * is \p true (where <em>previous-item</em> is either <tt>input<sub><em>i-1</em></sub></tt>,
+     * or <tt>input<sub><em>ITEMS_PER_THREAD</em>-1</sub></tt> in the previous thread).  For
+     * <em>thread</em><sub>0</sub>, item <tt>input<sub>0</sub></tt> is compared
+     * against /p tile_prefix. The last tile item of the last thread is also returned
+     * to thread<sub>0</sub>.
+     *
+     * The \p tile_prefix and \p last_tile_item are undefined in threads other than <em>thread</em><sub>0</sub>.
+     *
+     * \smemreuse
+     *
+     * \tparam ITEMS_PER_THREAD     <b>[inferred]</b> The number of consecutive items partitioned onto each thread.
+     * \tparam Flag                 <b>[inferred]</b> The flag type (must be an integer type)
+     * \tparam FlagOp               <b>[inferred]</b> Binary boolean functor type, having input parameters <tt>(const T &a, const T &b)</tt> and returning \p true if a discontinuity exists between \p a and \p b, otherwise \p false.
+     */
+    template <
+        int             ITEMS_PER_THREAD,
+        typename        Flag,
+        typename        FlagOp>
+    static __device__ __forceinline__ void Flag(
+        SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
+        T               (&input)[ITEMS_PER_THREAD],     ///< [in] Input items
+        T               tile_prefix,                    ///< [in] <b>[<em>thread</em><sub>0</sub> only]</b> Item with which to compare the first tile item (<tt>input<sub>0</sub></tt>from <em>thread</em><sub>0</sub>).
+        FlagOp          flag_op,                        ///< [in] Binary boolean flag predicate
+        Flag            (&flags)[ITEMS_PER_THREAD],     ///< [out] Discontinuity flags
+        T               &last_tile_item)                ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> The last tile item (<tt>input<sub><em>ITEMS_PER_THREAD</em>-1</sub></tt> from <em>thread</em><sub><tt><em>CTA_THREADS</em></tt>-1</sub>)
+    {
+        // Share last item
+        smem_storage.last_items[threadIdx.x] = input[ITEMS_PER_THERAD - 1];
+
+        __syncthreads();
+
+        // Set flag for first item
+        int prefix;
+        if (threadIdx.x == 0)
+        {
+            prefix = tile_prefix;
+            last_tile_item = smem_storage.last_items[CTA_THREADS - 1];
+        }
+        else
+        {
+            prefix = last_items[threadIdx.x - 1];
+        }
+        flags[0] = flag_op(prefix, input[0]);
+
+
+        // Set flags for remaining items
+        #pragma unroll
+        for (int ITEM = 1; ITEM < ITEMS_PER_THREAD; ITEM++)
+        {
+            flags[ITEM] = flag_op(input[ITEM - 1], input[ITEM]);
+        }
+    }
 
 };
 

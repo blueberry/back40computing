@@ -879,7 +879,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ScanOp     [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ScanOp     <b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <typename ScanOp>
     static __device__ __forceinline__ void InclusiveScan(
@@ -899,7 +899,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ScanOp     [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ScanOp     <b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <typename ScanOp>
     static __device__ __forceinline__ void InclusiveScan(
@@ -920,7 +920,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ScanOp     [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ScanOp     <b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <typename ScanOp>
     static __device__ __forceinline__ void InclusiveScan(
@@ -959,7 +959,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ScanOp     [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ScanOp     <b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <typename ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
@@ -980,7 +980,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ScanOp     [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ScanOp     <b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <typename ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
@@ -1002,7 +1002,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ScanOp     [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ScanOp     <b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <typename ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
@@ -1047,7 +1047,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ScanOp     [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ScanOp     <b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <typename ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
@@ -1067,7 +1067,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ScanOp     [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ScanOp     <b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <typename ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
@@ -1088,7 +1088,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ScanOp     [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ScanOp     <b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <typename ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
