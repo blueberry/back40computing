@@ -17,6 +17,11 @@
  * 
  ******************************************************************************/
 
+/**
+ * \file
+ * Simple binary operator functor types
+ */
+
 /******************************************************************************
  * Simple functor operators
  ******************************************************************************/
@@ -28,8 +33,14 @@
 
 
 CUB_NS_PREFIX
+
+/// CUB namespace
 namespace cub {
 
+/**
+ *  \addtogroup SimtUtils
+ * @{
+ */
 
 /**
  * Default equality functor
@@ -37,10 +48,10 @@ namespace cub {
 template <typename T>
 struct Equality
 {
-	__host__ __device__ __forceinline__ bool operator()(const T &a, const T &b)
-	{
-		return a == b;
-	}
+    __host__ __device__ __forceinline__ bool operator()(const T &a, const T &b)
+    {
+        return a == b;
+    }
 };
 
 
@@ -50,28 +61,28 @@ struct Equality
 template <typename T>
 struct Sum
 {
-	// Binary reduction
-	__host__ __device__ __forceinline__ T operator()(const T &a, const T &b)
-	{
-		return a + b;
-	}
+    __host__ __device__ __forceinline__ T operator()(const T &a, const T &b)
+    {
+        return a + b;
+    }
 };
 
 
 /**
- * Default sum functor
+ * Default max functor
  */
 template <typename T>
 struct Max
 {
-	// Binary reduction
-	__host__ __device__ __forceinline__ T operator()(const T &a, const T &b)
-	{
-		return CUB_MAX(a, b);
-	}
+    __host__ __device__ __forceinline__ T operator()(const T &a, const T &b)
+    {
+        return CUB_MAX(a, b);
+    }
 };
 
 
+
+/** @} */       // end of SimtUtils group
 
 
 } // namespace cub

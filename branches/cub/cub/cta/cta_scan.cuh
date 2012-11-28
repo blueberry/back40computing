@@ -226,7 +226,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ScanOp   <b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ScanOp   <b>[inferred]</b> Binary scan functor type
      */
     template <typename ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
@@ -299,7 +299,7 @@ public:
      * \smemreuse
      *
      * \tparam ITEMS_PER_THREAD     <b>[inferred]</b> The number of consecutive items partitioned onto each thread.
-     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type
      */
     template <
         int             ITEMS_PER_THREAD,
@@ -330,7 +330,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type
      */
     template <typename ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
@@ -406,7 +406,7 @@ public:
      * \smemreuse
      *
      * \tparam ITEMS_PER_THREAD     <b>[inferred]</b> The number of consecutive items partitioned onto each thread.
-     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type
      */
     template <
         int             ITEMS_PER_THREAD,
@@ -436,7 +436,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type
      */
     template <typename ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
@@ -458,7 +458,7 @@ public:
      * \smemreuse
      *
      * \tparam ITEMS_PER_THREAD     <b>[inferred]</b> The number of consecutive items partitioned onto each thread.
-     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type
      */
     template <
         int             ITEMS_PER_THREAD,
@@ -495,7 +495,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ScanOp   <b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ScanOp   <b>[inferred]</b> Binary scan functor type
      */
     template <typename ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
@@ -564,7 +564,7 @@ public:
      * \smemreuse
      *
      * \tparam ITEMS_PER_THREAD     <b>[inferred]</b> The number of consecutive items partitioned onto each thread.
-     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type
      */
     template <
         int             ITEMS_PER_THREAD,
@@ -594,7 +594,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type
      */
     template <typename ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
@@ -667,7 +667,7 @@ public:
      * \smemreuse
      *
      * \tparam ITEMS_PER_THREAD     <b>[inferred]</b> The number of consecutive items partitioned onto each thread.
-     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type
      */
     template <
         int             ITEMS_PER_THREAD,
@@ -696,7 +696,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type
      */
     template <typename ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
@@ -716,7 +716,7 @@ public:
      * \smemreuse
      *
      * \tparam ITEMS_PER_THREAD     <b>[inferred]</b> The number of consecutive items partitioned onto each thread.
-     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type
      */
     template <
         int             ITEMS_PER_THREAD,
@@ -990,7 +990,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ScanOp   <b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ScanOp   <b>[inferred]</b> Binary scan functor type
      */
     template <typename ScanOp>
     static __device__ __forceinline__ void InclusiveScan(
@@ -1059,7 +1059,7 @@ public:
      * \smemreuse
      *
      * \tparam ITEMS_PER_THREAD     <b>[inferred]</b> The number of consecutive items partitioned onto each thread.
-     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type
      */
     template <
         int             ITEMS_PER_THREAD,
@@ -1089,7 +1089,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type
      */
     template <typename ScanOp>
     static __device__ __forceinline__ void InclusiveScan(
@@ -1162,7 +1162,7 @@ public:
      * \smemreuse
      *
      * \tparam ITEMS_PER_THREAD     <b>[inferred]</b> The number of consecutive items partitioned onto each thread.
-     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type
      */
     template <
         int             ITEMS_PER_THREAD,
@@ -1191,7 +1191,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type
      */
     template <typename ScanOp>
     static __device__ __forceinline__ void InclusiveScan(
@@ -1211,7 +1211,7 @@ public:
      * \smemreuse
      *
      * \tparam ITEMS_PER_THREAD     <b>[inferred]</b> The number of consecutive items partitioned onto each thread.
-     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type
      */
     template <
         int             ITEMS_PER_THREAD,
@@ -1313,7 +1313,7 @@ public:
      * \smemreuse
      *
      * \tparam ITEMS_PER_THREAD     <b>[inferred]</b> The number of consecutive items partitioned onto each thread.
-     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type
      */
     template <int ITEMS_PER_THREAD>
     static __device__ __forceinline__ void InclusiveSum(
@@ -1453,7 +1453,7 @@ public:
      * \smemreuse
      *
      * \tparam ITEMS_PER_THREAD     <b>[inferred]</b> The number of consecutive items partitioned onto each thread.
-     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type
      */
     template <int ITEMS_PER_THREAD>
     static __device__ __forceinline__ void InclusiveSum(

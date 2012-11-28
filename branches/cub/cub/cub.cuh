@@ -32,6 +32,7 @@
 #include "cta/cta_reduce.cuh"
 #include "cta/cta_scan.cuh"
 #include "cta/cta_store.cuh"
+#include "cta/cta_discontinuity.cuh"
 
 #include "host/allocator.cuh"
 #include "host/cuda_props.cuh"
