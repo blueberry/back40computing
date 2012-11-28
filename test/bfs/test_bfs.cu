@@ -729,10 +729,12 @@ void RunTests(
 			// Copy out results
 			if (csr_problem.ExtractResults(h_labels)) exit(1);
 
-			if (test_iteration < 0) {
+			if ((test_iterations > 0) && (test_iteration < 0))
+			{
 				printf("Warmup iteration: %.3f ms\n", elapsed);
-			} else {
-
+			}
+			else
+			{
 				DisplayStats<CsrProblem::ProblemType::MARK_PREDECESSORS>(
 					*stats,
 					src,
