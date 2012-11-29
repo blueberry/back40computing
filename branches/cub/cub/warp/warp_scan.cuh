@@ -456,6 +456,8 @@ private:
     template <int DUMMY>
     struct WarpScanInternal<SMEM_SCAN, DUMMY>
     {
+    private:
+
         /// Constants
         enum
         {
@@ -474,6 +476,9 @@ private:
             T warp_scan[WARPS][WARP_SMEM_ELEMENTS];
         };
 
+    public:
+
+        typedef SmemStorage SmemStorage;
 
         /// Basic inclusive scan
         template <

@@ -156,11 +156,11 @@
  *
  * \par
  * CUB leverages the following programming idioms:
- * - [<b>C++ templates</b>](index.html#sec3sec1)
- * - [<b>Reflective type structure</b>](index.html#sec3sec2)
- * - [<b>Flexible data arrangement among threads</b>](index.html#sec3sec3)
+ * -# [<b>C++ templates</b>](index.html#sec3sec1)
+ * -# [<b>Reflective type structure</b>](index.html#sec3sec2)
+ * -# [<b>Flexible data arrangement among threads</b>](index.html#sec3sec3)
  *
- * \subsection sec3sec1 C++ templates
+ * \subsection sec3sec1 4.1 &nbsp;&nbsp; C++ templates
  *
  * \par
  * As a SIMT library, CUB must be flexible enough to accommodate a wide spectrum
@@ -179,16 +179,15 @@
  * <tt>cub.cuh</tt> header file into your <tt>.cu</tt> or <tt>.cpp</tt> sources
  * and compile with CUDA's <tt>nvcc</tt> compiler.
  *
- * \subsection sec3sec2 Reflective type structure
+ * \subsection sec3sec2 4.2 &nbsp;&nbsp; Reflective type structure
  *
  * \par
- * Cooperative SIMT components require shared memory for
- * communication between threads.  However, the specific size and layout
- * of the memory needed by a given primitive will be
- * specific to the details of its problem context (e.g., how may threads are
- * calling into it, how many items per thread, etc.).  Furthermore, this shared
- * memory must be allocated externally to the component if it is to be reused
- * elsewhere by the CTA.
+ * Cooperation requires shared memory for communicating between threads.
+ * However, the specific size and layout of the memory needed by a given
+ * primitive will be specific to the details of its problem context (e.g., how
+ * many threads are calling into it, how many items per thread, etc.).  Furthermore,
+ * this shared memory must be allocated externally to the component if it is to be
+ * reused elsewhere by the CTA.
  *
  * \par
  * \code
@@ -217,19 +216,51 @@
  * interfaces that expose both (1) procedural methods as well as (2) the opaque
  * shared memory types needed for their operation.
  *
-* \subsection sec3sec3 Flexible data arrangement among threads
+* \subsection sec3sec3 4.3 &nbsp;&nbsp; Flexible data arrangement among threads
  *
  * \par
- * The mapping of threads onto data items is a major consideration in
- * GPU computing.  In particular, there are many advantages of
- * having each thread process more than one data element:
- * - <b>Algorithmic efficiency</b>.  Sequential work in thread-private registers is cheaper than
- *   synchronized, cooperative work through shared memory spaces
- * - <b>Data occupancy</b>.  The number of items that can be resident on-chip in thread-private
- *   register storage is often greater than the number of
+ * We often design kernels such that each CTA is assigned a "tile" of data
+ * items for processing.  When the tile size is equal to the CTA size, the
+ * mapping of data onto threads is straightforward (1:1 items
+ * to CTA threads). However, it is often desirable to design a tile size
+ * that is a constant factor larger than the CTA size, i.e., each thread
+ * processes more than one data item.  The benefits of doing so include:
+ * - <b>Algorithmic efficiency</b>.  Sequential work in thread-private
+ *   registers is cheaper (time and power) than synchronized, cooperative
+ *   work through shared memory spaces
+ * - <b>Data occupancy</b>.  The number of items that can be resident on-chip in
+ *   thread-private register storage is often greater than the number of
  *   schedulable threads
- * - <b>Instruction-level parallelism</b>.  Multiple items per thread also facilitates ILP for greater throughput and utilization
+ * - <b>Instruction-level parallelism</b>.  Multiple items per thread also
+ *   facilitates ILP for greater throughput and utilization
  *
+ * \par
+ * When tile size is greater than CTA size, we are faced with the question
+ * how tile items should partitioned among CTA threads.  For linearly-ordered
+ * tiles, CUB supports the following two arrangement patterns:
+ * - <b><em>Blocked</em> arrangement</b>.  The aggregate tile of items is partitioned
+ *   evenly across threads in "blocked" fashion with thread<sub><em>i</em></sub>
+ *   owning the <em>i</em><sup>th</sup> segment of consecutive elements.
+ * - <b><em>Striped</em> arrangement</b>.  The aggregate tile of items is partitioned across
+ *   threads in "striped" fashion, i.e., the \p ITEMS_PER_THREAD items owned by
+ *   each thread have logical stride \p CTA_THREADS between them.
+ *
+ * \image html thread_data_1.png
+ *
+ * \par
+ * The cub::CtaExchange primitive provides operations for converting between blocked
+ * and striped arrangements. Blocked arrangements are often desirable for
+ * algorithmic benefits (where long sequences of items can be processed sequentially
+ * within each thread).  Striped arrangements are often desirable for data movement
+ * through global memory (where read/write coalescing is a important performance
+ * consideration).
+ *
+ * \image html thread_data_2.png
+ *
+ * \par
+ * We can also illustrated these arrangements as two dimensional representations (items-per-thread
+ * vs. threads-per-CTA).  In this form, we see that conversions between the two
+ * arrangements are isomorphic to 2D matrix transpose operations.
  *
  */
 
