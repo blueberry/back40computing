@@ -232,7 +232,7 @@
  *   thread-private register storage is often greater than the number of
  *   schedulable threads
  * - <b>Instruction-level parallelism</b>.  Multiple items per thread also
- *   facilitates ILP for greater throughput and utilization
+ *   facilitates greater ILP for improved throughput and utilization
  *
  * \par
  * When tile size is greater than CTA size, we are faced with the question
@@ -244,8 +244,10 @@
  * - <b><em>Striped</em> arrangement</b>.  The aggregate tile of items is partitioned across
  *   threads in "striped" fashion, i.e., the \p ITEMS_PER_THREAD items owned by
  *   each thread have logical stride \p CTA_THREADS between them.
- *
+ * <br><br>
  * \image html thread_data_1.png
+ * <center><b>Blocked vs. striped arrangements with \p CTA_THREADS = 4 and \p ITEMS_PER_THREAD = 2</b></center>
+ * <br>
  *
  * \par
  * The cub::CtaExchange primitive provides operations for converting between blocked
@@ -254,11 +256,13 @@
  * within each thread).  Striped arrangements are often desirable for data movement
  * through global memory (where read/write coalescing is a important performance
  * consideration).
- *
+ * <br><br>
  * \image html thread_data_2.png
+ * <center><b>Exchanging items between blocked vs. striped arrangements (illustrated as a 2D transpose with \p CTA_THREADS = 8 and \p ITEMS_PER_THREAD = 4)</b></center>
+ * <br>
  *
  * \par
- * We can also illustrated these arrangements as two dimensional representations (items-per-thread
+ * We can also illustrate these arrangements as two dimensional representations (items-per-thread
  * vs. threads-per-CTA).  In this form, we see that conversions between the two
  * arrangements are isomorphic to 2D matrix transpose operations.
  *

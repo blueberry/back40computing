@@ -222,11 +222,14 @@ class cub::WarpScan&lt; T, WARPS, LOGICAL_WARP_THREADS &gt;</h3>
 </ul>
 </dd></dl>
 <p><b>Algorithm</b> </p>
-<dl class="section user"><dt></dt><dd>These parallel prefix scan variants implement a warp-synchronous Kogge-Stone algorithm having <em>O</em>(log<em>n</em>) steps and <em>O</em>(<em>n</em>log<em>n</em>) work complexity, where <em>n</em> = <code>LOGICAL_WARP_THREADS</code> (which defaults to the warp size associated with the CUDA Compute Capability targeted by the compiler).</dd></dl>
-<div class="image">
+<dl class="section user"><dt></dt><dd>These parallel prefix scan variants implement a warp-synchronous Kogge-Stone algorithm having <em>O</em>(log<em>n</em>) steps and <em>O</em>(<em>n</em>log<em>n</em>) work complexity, where <em>n</em> = <code>LOGICAL_WARP_THREADS</code> (which defaults to the warp size associated with the CUDA Compute Capability targeted by the compiler). <br/>
+<br/>
+ <div class="image">
 <img src="kogge_stone_scan.png" alt="kogge_stone_scan.png"/>
 </div>
- <center><b>"Data flow within a 16-thread Kogge-Stone scan construction.  Junctions represent binary operators."</b></center><p><b>Examples</b></p>
+ <center><b>Data flow within a 16-thread Kogge-Stone scan construction. Junctions represent binary operators.</b></center> <br/>
+</dd></dl>
+<p><b>Examples</b></p>
 <dl class="section user"><dt></dt><dd><ul>
 <li><p class="startli"><b>Example 1:</b> Simple exclusive prefix sum for one warp </p>
 <div class="fragment"><div class="line"><span class="preprocessor">#include &lt;<a class="code" href="cub_8cuh.html">cub.cuh</a>&gt;</span></div>
@@ -1366,7 +1369,7 @@ template&lt;typename ScanOp &gt; </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Nov 29 2012 13:23:13 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
+Generated on Thu Nov 29 2012 13:32:24 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
 <img class="footer" src="doxygen.png" alt="doxygen"/>
 </a> 1.8.2
 </small></address>

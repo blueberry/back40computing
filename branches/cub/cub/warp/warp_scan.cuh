@@ -90,9 +90,10 @@ namespace cub {
  * steps and <em>O</em>(<em>n</em>log<em>n</em>) work complexity,
  * where <em>n</em> = \p LOGICAL_WARP_THREADS (which defaults to the warp
  * size associated with the CUDA Compute Capability targeted by the compiler).
- *
+ * <br><br>
  * \image html kogge_stone_scan.png
- * <center><b>"Data flow within a 16-thread Kogge-Stone scan construction.  Junctions represent binary operators."</b></center>
+ * <center><b>Data flow within a 16-thread Kogge-Stone scan construction.  Junctions represent binary operators.</b></center>
+ * <br>
  *
  * <b>Examples</b>
  *

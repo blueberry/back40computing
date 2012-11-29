@@ -197,26 +197,32 @@ var searchBox = new SearchBox("searchBox", "search",false,'Search');
 <dl class="section user"><dt></dt><dd>We often design kernels such that each CTA is assigned a "tile" of data items for processing. When the tile size is equal to the CTA size, the mapping of data onto threads is straightforward (1:1 items to CTA threads). However, it is often desirable to design a tile size that is a constant factor larger than the CTA size. In this case, each thread is assigned multiple data items. The benefits of doing so include:<ul>
 <li><b>Algorithmic efficiency</b>. Sequential work over multiple items in thread-private registers is cheaper than synchronized, cooperative work through shared memory spaces</li>
 <li><b>Data occupancy</b>. The number of items that can be resident on-chip in thread-private register storage is often greater than the number of schedulable threads</li>
-<li><b>Instruction-level parallelism</b>. Multiple items per thread also facilitates ILP for greater throughput and utilization</li>
+<li><b>Instruction-level parallelism</b>. Multiple items per thread also facilitates greater ILP for improved throughput and utilization</li>
 </ul>
 </dd></dl>
 <dl class="section user"><dt></dt><dd>When tile size is greater than CTA size, we are faced with the question how tile items should partitioned among CTA threads. For linearly-ordered tiles, CUB supports the following two arrangement patterns:<ul>
 <li><b><em>Blocked</em> arrangement</b>. The aggregate tile of items is partitioned evenly across threads in "blocked" fashion with thread<sub><em>i</em></sub> owning the <em>i</em><sup>th</sup> segment of consecutive elements.</li>
-<li><b><em>Striped</em> arrangement</b>. The aggregate tile of items is partitioned across threads in "striped" fashion, i.e., the <code>ITEMS_PER_THREAD</code> items owned by each thread have logical stride <code>CTA_THREADS</code> between them.</li>
-</ul>
-</dd></dl>
-<div class="image">
+<li><b><em>Striped</em> arrangement</b>. The aggregate tile of items is partitioned across threads in "striped" fashion, i.e., the <code>ITEMS_PER_THREAD</code> items owned by each thread have logical stride <code>CTA_THREADS</code> between them. <br/>
+<br/>
+ <div class="image">
 <img src="thread_data_1.png" alt="thread_data_1.png"/>
 </div>
-<dl class="section user"><dt></dt><dd>The <a class="el" href="classcub_1_1_cta_exchange.html" title="The CtaExchange type provides operations for reorganizing the partitioning of ordered data across CTA...">cub::CtaExchange</a> primitive provides operations for converting between blocked and striped arrangements. Blocked arrangements are often desirable for algorithmic benefits (where long sequences of items can be processed sequentially within each thread). Striped arrangements are often desirable for data movement through global memory (where read/write coalescing is a important performance consideration).</dd></dl>
-<div class="image">
+ <center><b>Blocked vs. striped arrangements with <code>CTA_THREADS</code> = 4 and <code>ITEMS_PER_THREAD</code> = 2</b></center> <br/>
+</li>
+</ul>
+</dd></dl>
+<dl class="section user"><dt></dt><dd>The <a class="el" href="classcub_1_1_cta_exchange.html" title="The CtaExchange type provides operations for reorganizing the partitioning of ordered data across CTA...">cub::CtaExchange</a> primitive provides operations for converting between blocked and striped arrangements. Blocked arrangements are often desirable for algorithmic benefits (where long sequences of items can be processed sequentially within each thread). Striped arrangements are often desirable for data movement through global memory (where read/write coalescing is a important performance consideration). <br/>
+<br/>
+ <div class="image">
 <img src="thread_data_2.png" alt="thread_data_2.png"/>
 </div>
-<dl class="section user"><dt></dt><dd>We can also illustrated these arrangements as two dimensional representations (items-per-thread vs. threads-per-CTA). In this form, we see that conversions between the two arrangements are isomorphic to 2D matrix transpose operations. </dd></dl>
+ <center><b>Exchanging items between blocked vs. striped arrangements (illustrated as a 2D transpose with <code>CTA_THREADS</code> = 8 and <code>ITEMS_PER_THREAD</code> = 4)</b></center> <br/>
+</dd></dl>
+<dl class="section user"><dt></dt><dd>We can also illustrate these arrangements as two dimensional representations (items-per-thread vs. threads-per-CTA). In this form, we see that conversions between the two arrangements are isomorphic to 2D matrix transpose operations. </dd></dl>
 </div></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Nov 29 2012 13:23:13 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
+Generated on Thu Nov 29 2012 13:32:24 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
 <img class="footer" src="doxygen.png" alt="doxygen"/>
 </a> 1.8.2
 </small></address>
