@@ -182,7 +182,9 @@ struct SweepPass <KernelPolicy, true>
 /**
  * Not valid for this arch (default)
  */
-template <typename KernelPolicy, int CUDA_ARCH = KernelPolicy::CUDA_ARCH>
+template <
+    typename    KernelPolicy,
+    bool        VALID = (__B40C_CUDA_ARCH__ >= KernelPolicy::CUDA_ARCH)>
 struct Dispatch
 {
 	typedef typename KernelPolicy::VertexId VertexId;
@@ -212,7 +214,7 @@ struct Dispatch
  * Valid for this arch (policy matches compiler-inserted macro)
  */
 template <typename KernelPolicy>
-struct Dispatch<KernelPolicy, __B40C_CUDA_ARCH__>
+struct Dispatch<KernelPolicy, true>
 {
 	typedef typename KernelPolicy::VertexId VertexId;
 	typedef typename KernelPolicy::SizeT SizeT;
