@@ -48,6 +48,7 @@ namespace cub {
 template <typename T>
 struct Equality
 {
+    /// Boolean equality operator, returns <tt>(a == b)</tt>
     __host__ __device__ __forceinline__ bool operator()(const T &a, const T &b)
     {
         return a == b;
@@ -61,6 +62,7 @@ struct Equality
 template <typename T>
 struct Sum
 {
+    /// Boolean sum operator, returns <tt>a + b</tt>
     __host__ __device__ __forceinline__ T operator()(const T &a, const T &b)
     {
         return a + b;
@@ -74,6 +76,7 @@ struct Sum
 template <typename T>
 struct Max
 {
+    /// Boolean max operator, returns <tt>(a > b) ? a : b</tt>
     __host__ __device__ __forceinline__ T operator()(const T &a, const T &b)
     {
         return CUB_MAX(a, b);

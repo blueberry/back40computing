@@ -92,6 +92,7 @@ int main(int argc, char** argv)
 
     // Initialize CUDA device properties
     CudaProps cuda_props;
+    CubDebugExit(cuda_props.Init());
 
     // Compute grid size and occupancy
     int occupancy = CUB_MIN(
@@ -109,6 +110,7 @@ int main(int argc, char** argv)
 
     printf("Initializing software global barrier for Kernel<<<%d,%d>>> with %d occupancy\n",
     	grid_size, cta_size, occupancy);
+    fflush(stdout);
 
     // Init global barrier
     CtaGlobalBarrierLifetime global_barrier;

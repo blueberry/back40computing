@@ -320,7 +320,8 @@ struct CachedAllocator
 				cached_blocks.erase(block_itr);
 				cached_bytes[gpu] -= search_key.bytes;
 
-				if (debug) printf("\tReused device block %d bytes on gpu %d\n", search_key.bytes, gpu);
+				if (debug) printf("\tGPU %d reused cached block (%d bytes). %d available blocks cached (%d bytes), %d live blocks outstanding.\n",
+				    gpu, search_key.bytes, cached_blocks.size(), cached_bytes[gpu], live_blocks.size());
 			}
 			else
 			{
@@ -346,7 +347,8 @@ struct CachedAllocator
 				// Insert into live blocks
 				live_blocks.insert(search_key);
 
-				if (debug) printf("\tAllocating new device block %d bytes on gpu %d\n", search_key.bytes, gpu);
+                if (debug) printf("\tGPU %d allocating new device block %d bytes. %d available blocks cached (%d bytes), %d live blocks outstanding.\n",
+                    gpu, search_key.bytes, cached_blocks.size(), cached_bytes[gpu], live_blocks.size());
 			}
 		} while(0);
 
@@ -421,20 +423,15 @@ struct CachedAllocator
 				// Check if we should keep the returned allocation
 				if (cached_bytes[gpu] + search_key.bytes <= max_cached_bytes)
 				{
-					int begin = cached_blocks.size();
-
 					// Insert returned allocation into free blocks
 					cached_blocks.insert(search_key);
 					cached_bytes[gpu] += search_key.bytes;
 
-					int end = cached_blocks.size();
-
-					if (debug) printf("Returned %d bytes, blocks begin: %d, end: %d\n", search_key.bytes, begin, end);
+					if (debug) printf("\tGPU %d returned %d bytes. %d available blocks cached (%d bytes), %d live blocks outstanding.\n",
+					    gpu, search_key.bytes, cached_blocks.size(), cached_bytes[gpu], live_blocks.size());
 				}
 				else
 				{
-					if (debug) printf("Freed %d bytes\n", search_key.bytes);
-
 					// Free the returned allocation.  Unlock.
 					if (locked) {
 						Unlock(&spin_lock);
@@ -447,6 +444,9 @@ struct CachedAllocator
 
 					// Free device memory
 					if (error = CubDebug(cudaFree(d_ptr))) break;
+
+					if (debug) printf("\tGPU %d freed %d bytes.  %d available blocks cached (%d bytes), %d live blocks outstanding.\n",
+					    gpu, search_key.bytes, cached_blocks.size(), cached_bytes[gpu], live_blocks.size());
 				}
 			}
 		} while (0);
@@ -525,9 +525,12 @@ struct CachedAllocator
 			// Reduce balance and erase entry
 			cached_bytes[current_gpu] -= begin->bytes;
 			cached_blocks.erase(begin);
+
+	        if (debug) printf("\tGPU %d freed %d bytes.  %d available blocks cached (%d bytes), %d live blocks outstanding.\n",
+	            current_gpu, begin->bytes, cached_blocks.size(), cached_bytes[current_gpu], live_blocks.size());
 		}
 
-		// Unlock
+        // Unlock
 		if (locked) {
 			Unlock(&spin_lock);
 			locked = false;

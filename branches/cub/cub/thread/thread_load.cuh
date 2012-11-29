@@ -203,7 +203,7 @@ __device__ __forceinline__ T ThreadLoad(T *ptr)
 	type ThreadLoad<cub_modifier, type>(type* ptr) 										\
 	{																					\
 		asm_type raw;																	\
-		asm("ld.global."#ptx_modifier"."#ptx_type" %0, [%1];" :							\
+		asm volatile ("ld.global."#ptx_modifier"."#ptx_type" %0, [%1];" :				\
 			"="#reg_mod(raw) : 															\
 			_CUB_ASM_PTR_(ptr));														\
 		type val = reinterpret_cast<type&>(raw);										\
@@ -218,7 +218,7 @@ __device__ __forceinline__ T ThreadLoad(T *ptr)
 	type ThreadLoad<cub_modifier, type>(type* ptr) 										\
 	{																					\
 		asm_type raw;																	\
-		asm("ld.global."#ptx_modifier"."#ptx_type" %0, [%1];" :							\
+		asm volatile ("ld.global."#ptx_modifier"."#ptx_type" %0, [%1];" :				\
 			"="#reg_mod(raw) :															\
 			_CUB_ASM_PTR_(ptr));														\
 		type val = { reinterpret_cast<component_type&>(raw) };							\
@@ -231,10 +231,10 @@ __device__ __forceinline__ T ThreadLoad(T *ptr)
  */
 #define CUB_VS_LOAD_1(type, component_type, asm_type, ptx_type, reg_mod)				\
 	template<>																			\
-	type ThreadLoad<PTX_LOAD_VS, type>(type* ptr) 											\
+	type ThreadLoad<PTX_LOAD_VS, type>(type* ptr) 										\
 	{																					\
 		type val;																		\
-		val.x = ThreadLoad<PTX_LOAD_VS>((component_type*) ptr);								\
+		val.x = ThreadLoad<PTX_LOAD_VS>((component_type*) ptr);							\
 		return val;																		\
 	}
 
@@ -246,7 +246,7 @@ __device__ __forceinline__ T ThreadLoad(T *ptr)
 	type ThreadLoad<cub_modifier, type>(type* ptr) 										\
 	{																					\
 		asm_type raw_x, raw_y;															\
-		asm("ld.global."#ptx_modifier".v2."#ptx_type" {%0, %1}, [%2];" :				\
+		asm volatile ("ld.global."#ptx_modifier".v2."#ptx_type" {%0, %1}, [%2];" :		\
 			"="#reg_mod(raw_x), 														\
 			"="#reg_mod(raw_y) :														\
 			_CUB_ASM_PTR_(ptr));														\

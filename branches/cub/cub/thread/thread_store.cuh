@@ -216,7 +216,7 @@ __device__ __forceinline__ void ThreadStore(T *ptr, const T& val)
 	void ThreadStore<cub_modifier, type>(type* ptr, const type& val)					\
 	{																					\
 		const asm_type raw = reinterpret_cast<const asm_type&>(val);					\
-		asm("st.global."#ptx_modifier"."#ptx_type" [%0], %1;" : :						\
+		asm volatile ("st.global."#ptx_modifier"."#ptx_type" [%0], %1;" : :						\
 			_CUB_ASM_PTR_(ptr),															\
 			#reg_mod(raw)); 															\
 	}
@@ -229,7 +229,7 @@ __device__ __forceinline__ void ThreadStore(T *ptr, const T& val)
 	void ThreadStore<cub_modifier, type>(type* ptr, const type& val)					\
 	{																					\
 		const asm_type raw_x = reinterpret_cast<const asm_type&>(val.x);				\
-		asm("st.global."#ptx_modifier"."#ptx_type" [%0], %1;" : :						\
+		asm volatile ("st.global."#ptx_modifier"."#ptx_type" [%0], %1;" : :						\
 			_CUB_ASM_PTR_(ptr),															\
 			#reg_mod(raw_x));															\
 	}
@@ -255,7 +255,7 @@ __device__ __forceinline__ void ThreadStore(T *ptr, const T& val)
 	{																					\
 		const asm_type raw_x = reinterpret_cast<const asm_type&>(val.x);				\
 		const asm_type raw_y = reinterpret_cast<const asm_type&>(val.y);				\
-		asm("st.global."#ptx_modifier".v2."#ptx_type" [%0], {%1, %2};" : :				\
+		asm volatile ("st.global."#ptx_modifier".v2."#ptx_type" [%0], {%1, %2};" : :				\
 			_CUB_ASM_PTR_(ptr),															\
 			#reg_mod(raw_x), 															\
 			#reg_mod(raw_y));															\
@@ -280,7 +280,7 @@ __device__ __forceinline__ void ThreadStore(T *ptr, const T& val)
 		{																				\
 			const asm_type raw_x = reinterpret_cast<const asm_type&>(val.x);			\
 			const asm_type raw_y = reinterpret_cast<const asm_type&>(val.y);			\
-			asm("{"																		\
+			asm volatile ("{"																		\
 				"	.reg ."_CUB_ASM_PTR_SIZE_" t1;"										\
 				"	cvta.to.shared."_CUB_ASM_PTR_SIZE_" t1, %0;"						\
 				"	st.shared.volatile.v2."#ptx_type" [t1], {%1, %2};"					\
@@ -302,7 +302,7 @@ __device__ __forceinline__ void ThreadStore(T *ptr, const T& val)
 		const asm_type raw_y = reinterpret_cast<const asm_type&>(val.y);				\
 		const asm_type raw_z = reinterpret_cast<const asm_type&>(val.z);				\
 		const asm_type raw_w = reinterpret_cast<const asm_type&>(val.w);				\
-		asm("st.global."#ptx_modifier".v4."#ptx_type" [%0], {%1, %2, %3, %4};" : :		\
+		asm volatile ("st.global."#ptx_modifier".v4."#ptx_type" [%0], {%1, %2, %3, %4};" : :		\
 			_CUB_ASM_PTR_(ptr),															\
 			#reg_mod(raw_x), 															\
 			#reg_mod(raw_y), 															\
@@ -333,7 +333,7 @@ __device__ __forceinline__ void ThreadStore(T *ptr, const T& val)
 			const asm_type raw_y = reinterpret_cast<const asm_type&>(val.y);			\
 			const asm_type raw_z = reinterpret_cast<const asm_type&>(val.z);			\
 			const asm_type raw_w = reinterpret_cast<const asm_type&>(val.w);			\
-			asm("{"																		\
+			asm volatile ("{"																		\
 				"	.reg ."_CUB_ASM_PTR_SIZE_" t1;"										\
 				"	cvta.to.shared."_CUB_ASM_PTR_SIZE_" t1, %0;"						\
 				"	st.volatile.shared.v4."#ptx_type" [t1], {%1, %2, %3, %4};"			\

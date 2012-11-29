@@ -57,6 +57,8 @@ public:
 	 */
 	__device__ __forceinline__ void Sync() const
 	{
+	    volatile SyncFlag *d_vol_sync = d_sync;
+
 		// Threadfence and syncthreads to make sure global writes are visible before
 		// thread-0 reports in with its sync counter
 		__threadfence();
@@ -67,7 +69,7 @@ public:
 			// Report in ourselves
 			if (threadIdx.x == 0)
 			{
-				d_sync[blockIdx.x] = 1;
+			    d_vol_sync[blockIdx.x] = 1;
 			}
 
 			__syncthreads();
@@ -86,7 +88,7 @@ public:
 			// Let everyone know it's safe to read their prefix sums
 			for (int peer_block = threadIdx.x; peer_block < gridDim.x; peer_block += blockDim.x)
 			{
-				d_sync[peer_block] = 0;
+			    d_vol_sync[peer_block] = 0;
 			}
 		}
 		else
@@ -94,7 +96,7 @@ public:
 			if (threadIdx.x == 0)
 			{
 				// Report in
-				d_sync[blockIdx.x] = 1;
+			    d_vol_sync[blockIdx.x] = 1;
 
 				// Wait for acknowledgement
 				while (ThreadLoad<PTX_LOAD_CG>(d_sync + blockIdx.x) == 1)

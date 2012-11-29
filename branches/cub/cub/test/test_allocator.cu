@@ -64,6 +64,7 @@ int main(int argc, char** argv)
 
 	// Create default allocator (caches up to 6MB in device allocations per GPU)
     CachedAllocator allocator;
+    allocator.debug = true;
 
 	printf("Running single-gpu tests...\n"); fflush(stdout);
 
@@ -181,11 +182,12 @@ int main(int argc, char** argv)
     // Test8
     //
 
-    // Allocate max cached bytes on the current gpu
-    allocator.Allocate((void **) &d_max_cached, allocator.max_cached_bytes);
+    // Allocate max cached bytes + 1 on the current gpu
+    char *d_max_cached_plus;
+    allocator.Allocate((void **) &d_max_cached_plus, allocator.max_cached_bytes + 1);
 
     // Deallocate max cached bytes
-    allocator.Deallocate(d_max_cached);
+    allocator.Deallocate(d_max_cached_plus);
 
     // Deallocate d_768B
     allocator.Deallocate(d_768B);
