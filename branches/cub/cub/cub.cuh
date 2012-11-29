@@ -223,10 +223,10 @@
  * items for processing.  When the tile size is equal to the CTA size, the
  * mapping of data onto threads is straightforward (1:1 items
  * to CTA threads). However, it is often desirable to design a tile size
- * that is a constant factor larger than the CTA size, i.e., each thread
- * processes more than one data item.  The benefits of doing so include:
- * - <b>Algorithmic efficiency</b>.  Sequential work in thread-private
- *   registers is cheaper (time and power) than synchronized, cooperative
+ * that is a constant factor larger than the CTA size.  In this case, each thread
+ * is assigned multiple data items.  The benefits of doing so include:
+ * - <b>Algorithmic efficiency</b>.  Sequential work over multiple items in
+ *   thread-private registers is cheaper than synchronized, cooperative
  *   work through shared memory spaces
  * - <b>Data occupancy</b>.  The number of items that can be resident on-chip in
  *   thread-private register storage is often greater than the number of

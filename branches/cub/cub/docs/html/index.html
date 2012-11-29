@@ -194,8 +194,8 @@ var searchBox = new SearchBox("searchBox", "search",false,'Search');
 <dl class="section user"><dt></dt><dd>To address this issue, we encapsulate cooperative procedures within <em>reflective type structure</em> (C++ classes). As illustrated in the <a class="el" href="classcub_1_1_cta_radix_sort.html" title="The CtaRadixSort type provides variants of parallel radix sorting of unsigned numeric types across th...">cub::CtaRadixSort</a> example above, these primitives are C++ classes with interfaces that expose both (1) procedural methods as well as (2) the opaque shared memory types needed for their operation.</dd></dl>
 <h2><a class="anchor" id="sec3sec3"></a>
 4.3    Flexible data arrangement among threads</h2>
-<dl class="section user"><dt></dt><dd>We often design kernels such that each CTA is assigned a "tile" of data items for processing. When the tile size is equal to the CTA size, the mapping of data onto threads is straightforward (1:1 items to CTA threads). However, it is often desirable to design a tile size that is a constant factor larger than the CTA size, i.e., each thread processes more than one data item. The benefits of doing so include:<ul>
-<li><b>Algorithmic efficiency</b>. Sequential work in thread-private registers is cheaper (time and power) than synchronized, cooperative work through shared memory spaces</li>
+<dl class="section user"><dt></dt><dd>We often design kernels such that each CTA is assigned a "tile" of data items for processing. When the tile size is equal to the CTA size, the mapping of data onto threads is straightforward (1:1 items to CTA threads). However, it is often desirable to design a tile size that is a constant factor larger than the CTA size. In this case, each thread is assigned multiple data items. The benefits of doing so include:<ul>
+<li><b>Algorithmic efficiency</b>. Sequential work over multiple items in thread-private registers is cheaper than synchronized, cooperative work through shared memory spaces</li>
 <li><b>Data occupancy</b>. The number of items that can be resident on-chip in thread-private register storage is often greater than the number of schedulable threads</li>
 <li><b>Instruction-level parallelism</b>. Multiple items per thread also facilitates ILP for greater throughput and utilization</li>
 </ul>
@@ -216,7 +216,7 @@ var searchBox = new SearchBox("searchBox", "search",false,'Search');
 </div></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Nov 29 2012 13:11:03 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
+Generated on Thu Nov 29 2012 13:23:13 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
 <img class="footer" src="doxygen.png" alt="doxygen"/>
 </a> 1.8.2
 </small></address>
