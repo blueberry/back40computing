@@ -246,7 +246,7 @@ struct Cta
 					__syncthreads();
 
 					// Read commands
-					SizeT coop_offset 	= cta->smem_storage.state.warp_comm[0][0] + threadIdx.x;
+					SizeT coop_offset 	= cta->smem_storage.state.warp_comm[0][0];
 					SizeT coop_rank	 	= cta->smem_storage.state.warp_comm[0][1] + threadIdx.x;
 					SizeT coop_oob 		= cta->smem_storage.state.warp_comm[0][2];
 
@@ -256,11 +256,11 @@ struct Cta
 					}
 
 					VertexId neighbor_id;
-					while (coop_offset < coop_oob) {
+					while (coop_offset + KernelPolicy::THREADS < coop_oob) {
 
 						// Gather
 						util::io::ModifiedLoad<KernelPolicy::COLUMN_READ_MODIFIER>::Ld(
-							neighbor_id, cta->d_column_indices + coop_offset);
+							neighbor_id, cta->d_column_indices + coop_offset + threadIdx.x);
 
 						// Scatter neighbor
 						util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
@@ -277,6 +277,23 @@ struct Cta
 						coop_offset += KernelPolicy::THREADS;
 						coop_rank += KernelPolicy::THREADS;
 					}
+
+                    if (coop_offset + threadIdx.x < coop_oob) {
+                        // Gather
+                        util::io::ModifiedLoad<KernelPolicy::COLUMN_READ_MODIFIER>::Ld(
+                            neighbor_id, cta->d_column_indices + coop_offset + threadIdx.x);
+
+                        // Scatter neighbor
+                        util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
+                            neighbor_id, cta->d_out + cta->smem_storage.state.coarse_enqueue_offset + coop_rank);
+
+                        if (KernelPolicy::MARK_PREDECESSORS) {
+                            // Scatter predecessor
+                            util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
+                                predecessor_id, cta->d_predecessor_out + cta->smem_storage.state.coarse_enqueue_offset + coop_rank);
+                        }
+                    }
+
 				}
 
 				// Next vector element
