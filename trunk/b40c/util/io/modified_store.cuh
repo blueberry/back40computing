@@ -107,7 +107,7 @@ struct ModifiedStore
 	 */
 	#define B40C_STORE(base_type, ptx_type, reg_mod, cast_type, modifier)																	\
 		template<> template<> void ModifiedStore<st::modifier>::St(base_type val, base_type* ptr) {											\
-			asm("st.global."#modifier"."#ptx_type" [%0], %1;" : : _B40C_ASM_PTR_(ptr), #reg_mod(reinterpret_cast<cast_type&>(val)));			\
+			asm volatile ("st.global."#modifier"."#ptx_type" [%0], %1;" : : _B40C_ASM_PTR_(ptr), #reg_mod(reinterpret_cast<cast_type&>(val)));			\
 		}
 
 	/**
@@ -116,14 +116,14 @@ struct ModifiedStore
 	#define B40C_STORE_VEC1(component_type, base_type, ptx_type, reg_mod, cast_type, modifier)																	\
 		template<> template<> void ModifiedStore<st::modifier>::St(base_type val, base_type* ptr) {											\
 			component_type c = val.x;																											\
-			asm("st.global."#modifier"."#ptx_type" [%0], %1;" : : _B40C_ASM_PTR_(ptr), #reg_mod(reinterpret_cast<cast_type&>(c)));			\
+			asm volatile ("st.global."#modifier"."#ptx_type" [%0], %1;" : : _B40C_ASM_PTR_(ptr), #reg_mod(reinterpret_cast<cast_type&>(c)));			\
 		}
 
 	#define B40C_STORE_VEC2(component_type, base_type, ptx_type, reg_mod, cast_type, modifier)																	\
 		template<> template<> void ModifiedStore<st::modifier>::St(base_type val, base_type* ptr) {											\
 			component_type cx = val.x;																											\
 			component_type cy = val.y;																											\
-			asm("st.global."#modifier".v2."#ptx_type" [%0], {%1, %2};" : : _B40C_ASM_PTR_(ptr), #reg_mod(reinterpret_cast<cast_type&>(cx)), #reg_mod(reinterpret_cast<cast_type&>(cy)));		\
+			asm volatile ("st.global."#modifier".v2."#ptx_type" [%0], {%1, %2};" : : _B40C_ASM_PTR_(ptr), #reg_mod(reinterpret_cast<cast_type&>(cx)), #reg_mod(reinterpret_cast<cast_type&>(cy)));		\
 		}
 
 	#define B40C_STORE_VEC4(component_type, base_type, ptx_type, reg_mod, cast_type, modifier)																	\
@@ -132,7 +132,7 @@ struct ModifiedStore
 			component_type cy = val.y;																											\
 			component_type cz = val.z;																											\
 			component_type cw = val.w;																											\
-			asm("st.global."#modifier".v4."#ptx_type" [%0], {%1, %2, %3, %4};" : : _B40C_ASM_PTR_(ptr), #reg_mod(reinterpret_cast<cast_type&>(cx)), #reg_mod(reinterpret_cast<cast_type&>(cy)), #reg_mod(reinterpret_cast<cast_type&>(cz)), #reg_mod(reinterpret_cast<cast_type&>(cw)));		\
+			asm volatile ("st.global."#modifier".v4."#ptx_type" [%0], {%1, %2, %3, %4};" : : _B40C_ASM_PTR_(ptr), #reg_mod(reinterpret_cast<cast_type&>(cx)), #reg_mod(reinterpret_cast<cast_type&>(cy)), #reg_mod(reinterpret_cast<cast_type&>(cz)), #reg_mod(reinterpret_cast<cast_type&>(cw)));		\
 		}
 
 

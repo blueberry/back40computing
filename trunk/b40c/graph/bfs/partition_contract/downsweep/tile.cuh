@@ -191,17 +191,27 @@ struct Tile :
 		Cta *cta,
 		const SizeT &valid_elements)
 	{
-		if (KernelPolicy::SCATTER_STRATEGY == partition::downsweep::SCATTER_DIRECT) {
+		if (KernelPolicy::SCATTER_STRATEGY == partition::downsweep::SCATTER_DIRECT)
+		{
+            #pragma unroll
+            for (int i = 0; i < CYCLES_PER_TILE; i++)
+            {
+                #pragma unroll
+                for (int j = 0; j < LOADS_PER_CYCLE; j++)
+                {
+                    #pragma unroll
+                    for (int k = 0; k < LOAD_VEC_SIZE; k++)
+                    {
+                        if (flags[i][j][k])
+                        {
+                            SizeT offset = this->scatter_offsets[i][j][k];
+                            cta->d_out_values[offset] =
+                                this->values[(i * LOADS_PER_CYCLE * LOAD_VEC_SIZE) + (j * LOAD_VEC_SIZE) + k];
+                        }
+                    }
+                }
+            }
 
-			util::io::ScatterTile<
-				KernelPolicy::LOG_TILE_ELEMENTS_PER_THREAD,
-				0,
-				KernelPolicy::THREADS,
-				KernelPolicy::WRITE_MODIFIER>::Scatter(
-					cta->d_out_values,
-					(ValueType (*)[1]) this->values,
-					(ValidFlag (*)[1]) this->flags,
-					(SizeT (*)[1]) this->scatter_offsets);
 		} else {
 
 			util::io::ScatterTile<
