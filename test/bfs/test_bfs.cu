@@ -598,11 +598,11 @@ void RunTests(
 	VertexId* reference_check 			= (g_quick) ? NULL : reference_labels;
 
 	// Allocate BFS enactor map
-	bfs::EnactorExpandContract<INSTRUMENT> 	expand_contract(g_verbose);
-	bfs::EnactorContractExpand<INSTRUMENT>	contract_expand(g_verbose);
+//	bfs::EnactorExpandContract<INSTRUMENT> 	expand_contract(g_verbose);
+//	bfs::EnactorContractExpand<INSTRUMENT>	contract_expand(g_verbose);
 	bfs::EnactorTwoPhase<INSTRUMENT>		two_phase(g_verbose);
-	bfs::EnactorHybrid<INSTRUMENT>			hybrid(g_verbose);
-	bfs::EnactorMultiGpu<INSTRUMENT>		multi_gpu(g_verbose);
+//	bfs::EnactorHybrid<INSTRUMENT>			hybrid(g_verbose);
+//	bfs::EnactorMultiGpu<INSTRUMENT>		multi_gpu(g_verbose);
 
 	// Allocate Stats map
 	std::map<Strategy, Stats*> stats_map;
@@ -624,8 +624,7 @@ void RunTests(
 		num_gpus)) exit(1);
 
 	// Perform the specified number of test iterations
-	int test_iteration = -1;
-	while (test_iteration < test_iterations) {
+	while (stats_map[HOST]->rate.count <= test_iterations) {
 	
 		// If randomized-src was specified, re-roll the src
 		if (randomized_src) src = builder::RandomNode(csr_graph.nodes);
@@ -636,26 +635,28 @@ void RunTests(
 		// Compute reference CPU BFS solution for source-distance
 		//
 
-		if (!g_quick) {
-			SimpleReferenceBfs(
-				test_iteration,
-				csr_graph,
-				reference_labels,
-				src,
-				*stats_map[HOST]);
-			printf("\n");
+		int test_iteration = stats_map[HOST]->rate.count;
 
-			if (g_verbose2) {
-				printf("Reference solution: ");
-				DisplaySolution(reference_labels, csr_graph.nodes);
-				printf("\n");
-			}
-			fflush(stdout);
+        SimpleReferenceBfs(
+            test_iteration,
+            csr_graph,
+            reference_labels,
+            src,
+            *stats_map[HOST]);
+        printf("\n");
 
-			if (randomized_src && (test_iteration < stats_map[HOST]->rate.count)) {
-				test_iteration = stats_map[HOST]->rate.count;
-			}
-		}
+        if (g_verbose2) {
+            printf("Reference solution: ");
+            DisplaySolution(reference_labels, csr_graph.nodes);
+            printf("\n");
+        }
+        fflush(stdout);
+
+        if (test_iteration == stats_map[HOST]->rate.count)
+        {
+            // Didn't start within the main connected component
+            continue;
+        }
 
 		//
 		// Iterate over GPU strategies
@@ -677,7 +678,7 @@ void RunTests(
 			GpuTimer gpu_timer;
 
 			switch (strategy) {
-
+/*
 			case EXPAND_CONTRACT:
 				if (retval = csr_problem.Reset(expand_contract.GetFrontierType(), max_queue_sizing)) break;
 				gpu_timer.Start();
@@ -693,7 +694,7 @@ void RunTests(
 				gpu_timer.Stop();
 				contract_expand.GetStatistics(total_queued, search_depth, avg_duty);
 				break;
-
+*/
 			case TWO_PHASE:
 				if (retval = csr_problem.Reset(two_phase.GetFrontierType(), max_queue_sizing)) break;
 				gpu_timer.Start();
@@ -701,7 +702,7 @@ void RunTests(
 				gpu_timer.Stop();
 				two_phase.GetStatistics(total_queued, search_depth, avg_duty);
 				break;
-
+/*
 			case HYBRID:
 				if (retval = csr_problem.Reset(hybrid.GetFrontierType(), max_queue_sizing)) break;
 				gpu_timer.Start();
@@ -717,7 +718,7 @@ void RunTests(
 				gpu_timer.Stop();
 				multi_gpu.GetStatistics(total_queued, search_depth, avg_duty);
 				break;
-
+*/
 			}
 
 			if (retval && (retval != cudaErrorInvalidDeviceFunction)) {
@@ -729,7 +730,7 @@ void RunTests(
 			// Copy out results
 			if (csr_problem.ExtractResults(h_labels)) exit(1);
 
-			if ((test_iterations > 0) && (test_iteration < 0))
+			if ((test_iterations > 0) && (test_iteration == 0))
 			{
 				printf("Warmup iteration: %.3f ms\n", elapsed);
 			}
@@ -755,9 +756,6 @@ void RunTests(
 			}
 			fflush(stdout);
 
-			if (randomized_src && (test_iteration < stats->rate.count)) {
-				test_iteration = stats->rate.count;
-			}
 		}
 
 		if (!randomized_src) {
