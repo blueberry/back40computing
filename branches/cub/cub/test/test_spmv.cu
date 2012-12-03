@@ -138,12 +138,17 @@ __global__ void Kernel(
     typedef CtaExchange<PartialSum, CTA_THREADS>        CtaExchange;
     typedef CtaDiscontinuity<HeadFlag, CTA_THREADS>     CtaDiscontinuity;
 
-    // Shared memory type for this CTA (the union of the smem required for CUB primitives)
-    union SmemStorage
+    // Shared memory type for this CTA
+    struct SmemStorage
     {
-        typename CtaScan::SmemStorage           scan;
-        typename CtaExchange::SmemStorage       exchange;
-        typename CtaDiscontinuity::SmemStorage  discontinuity;
+        union
+        {
+            typename CtaScan::SmemStorage           scan;               // Smem needed for reduce-value-by-row scan
+            typename CtaExchange::SmemStorage       exchange;           // Smem needed for striped->blocked transpose
+            typename CtaDiscontinuity::SmemStorage  discontinuity;      // Smem needed for head-flagging
+        };
+
+        PartialSum                                  prev_aggregate;     // Aggregate from previous CTA
     };
 
 
@@ -153,7 +158,6 @@ __global__ void Kernel(
 
     // Declare shared items
     __shared__ SmemStorage  s_storage;       // Shared storage needed for CUB primitives
-    __shared__ PartialSum   s_prev_aggregate;          // Aggregate from previous CTA
 
     int                     columns[ITEMS_PER_THREAD];
     int                     rows[ITEMS_PER_THREAD];
@@ -232,7 +236,7 @@ __global__ void Kernel(
         }
 
         // Share prev_aggregate with other threads
-        s_prev_aggregate = prev_aggregate;
+        s_storage.prev_aggregate = prev_aggregate;
     }
 
     // Barrier for smem reuse and coherence
@@ -242,13 +246,13 @@ __global__ void Kernel(
     #pragma unroll
     for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
     {
-        partial_sums[ITEM] = scan_op(s_prev_aggregate, partial_sums[ITEM]);
+        partial_sums[ITEM] = scan_op(s_storage.prev_aggregate, partial_sums[ITEM]);
     }
 
     // First partial in first thread should be prev_aggregate (currently is identity)
     if (threadIdx.x == 0)
     {
-        partial_sums[0] = s_prev_aggregate;
+        partial_sums[0] = s_storage.prev_aggregate;
     }
 
     // Flag row heads using saved row ids
@@ -256,7 +260,7 @@ __global__ void Kernel(
     CtaDiscontinuity::Flag(
         s_storage.discontinuity,
         rows,                           // Original row ids
-        s_prev_aggregate.row,           // Last row id from previous CTA
+        s_storage.prev_aggregate.row,   // Last row id from previous CTA
         NewRowOp(),
         head_flags,                     // (out) Head flags
         last_row);                      // (out) The last row_id in this CTA (discard)
