@@ -132,14 +132,14 @@ __device__ __forceinline__ void CtaStoreDirect(
     T               (&items)[ITEMS_PER_THREAD],     ///< [in] Data to store
     InputIterator   itr,                            ///< [in] Input iterator for storing from
     const SizeT     &cta_offset,                    ///< [in] Offset in \p itr at which to store the tile
-    const SizeT     &guarded_elements)              ///< [in] Number of valid items in the tile
+    const SizeT     &guarded_items)              ///< [in] Number of valid items in the tile
 {
     // Store directly in thread-blocked order
     #pragma unroll
     for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
     {
         int item_offset = (threadIdx.x * ITEMS_PER_THREAD) + ITEM;
-        if (item_offset < guarded_elements)
+        if (item_offset < guarded_items)
         {
             ThreadStore<MODIFIER>(itr + cta_offset + item_offset, items[ITEM]);
         }
@@ -168,9 +168,9 @@ __device__ __forceinline__ void CtaStoreDirect(
     T               (&items)[ITEMS_PER_THREAD],     ///< [in] Data to store
     InputIterator   itr,                            ///< [in] Input iterator for storing from
     const SizeT     &cta_offset,                    ///< [in] Offset in \p itr at which to store the tile
-    const SizeT     &guarded_elements)              ///< [in] Number of valid items in the tile
+    const SizeT     &guarded_items)              ///< [in] Number of valid items in the tile
 {
-    CtaStoreDirect<PTX_STORE_NONE>(items, itr, cta_offset, guarded_elements);
+    CtaStoreDirect<PTX_STORE_NONE>(items, itr, cta_offset, guarded_items);
 }
 
 
@@ -272,14 +272,14 @@ __device__ __forceinline__ void CtaStoreDirectStriped(
     T               (&items)[ITEMS_PER_THREAD],     ///< [in] Data to store
     InputIterator   itr,                            ///< [in] Input iterator for storing from
     const SizeT     &cta_offset,                    ///< [in] Offset in \p itr at which to store the tile
-    const SizeT     &guarded_elements)              ///< [in] Number of valid items in the tile
+    const SizeT     &guarded_items)              ///< [in] Number of valid items in the tile
 {
     // Store directly in striped order
     #pragma unroll
     for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
     {
         int item_offset = (ITEM * CTA_THREADS) + threadIdx.x;
-        if (item_offset < guarded_elements)
+        if (item_offset < guarded_items)
         {
             ThreadStore<MODIFIER>(itr + cta_offset + item_offset, items[ITEM]);
         }
@@ -310,9 +310,9 @@ __device__ __forceinline__ void CtaStoreDirectStriped(
     T               (&items)[ITEMS_PER_THREAD],     ///< [in] Data to store
     InputIterator   itr,                            ///< [in] Input iterator for storing from
     const SizeT     &cta_offset,                    ///< [in] Offset in \p itr at which to store the tile
-    const SizeT     &guarded_elements)              ///< [in] Number of valid items in the tile
+    const SizeT     &guarded_items)              ///< [in] Number of valid items in the tile
 {
-    CtaStoreDirectStriped<CTA_THREADS, PTX_STORE_NONE>(items, itr, cta_offset, guarded_elements);
+    CtaStoreDirectStriped<CTA_THREADS, PTX_STORE_NONE>(items, itr, cta_offset, guarded_items);
 }
 
 
@@ -593,9 +593,9 @@ private:
             T               (&items)[ITEMS_PER_THREAD], ///< [in] Data to store
             InputIterator   itr,                        ///< [in] Input iterator for storing from
             const SizeT     &cta_offset,                ///< [in] Offset in \p itr at which to store the tile
-            const SizeT     &guarded_elements)          ///< [in] Number of valid items in the tile
+            const SizeT     &guarded_items)             ///< [in] Number of valid items in the tile
         {
-            CtaStoreDirect<PTX_STORE_NONE>(items, itr, cta_offset, guarded_elements);
+            CtaStoreDirect<PTX_STORE_NONE>(items, itr, cta_offset, guarded_items);
         }
     };
 
@@ -641,9 +641,9 @@ private:
             T               (&items)[ITEMS_PER_THREAD], ///< [in] Data to store
             InputIterator   itr,                        ///< [in] Input iterator for storing from
             const SizeT     &cta_offset,                ///< [in] Offset in \p itr at which to store the tile
-            const SizeT     &guarded_elements)          ///< [in] Number of valid items in the tile
+            const SizeT     &guarded_items)             ///< [in] Number of valid items in the tile
         {
-            CtaStoreDirect<PTX_STORE_NONE>(items, itr, cta_offset, guarded_elements);
+            CtaStoreDirect<PTX_STORE_NONE>(items, itr, cta_offset, guarded_items);
         }
     };
 
@@ -681,12 +681,12 @@ private:
             T               (&items)[ITEMS_PER_THREAD], ///< [in] Data to store
             InputIterator   itr,                        ///< [in] Input iterator for storing from
             const SizeT     &cta_offset,                ///< [in] Offset in \p itr at which to store the tile
-            const SizeT     &guarded_elements)          ///< [in] Number of valid items in the tile
+            const SizeT     &guarded_items)             ///< [in] Number of valid items in the tile
         {
             // Transpose to striped order
             CtaExchange::BlockedToStriped(smem_storage, items);
 
-            CtaStoreDirectStriped<CTA_THREADS, PTX_STORE_NONE>(items, itr, cta_offset, guarded_elements);
+            CtaStoreDirectStriped<CTA_THREADS, PTX_STORE_NONE>(items, itr, cta_offset, guarded_items);
         }
 
     };
@@ -735,9 +735,9 @@ public:
         T               (&items)[ITEMS_PER_THREAD], ///< [in] Data to store
         InputIterator   itr,                        ///< [in] Input iterator for storing from
         const SizeT     &cta_offset,                ///< [in] Offset in \p itr at which to store the tile
-        const SizeT     &guarded_elements)          ///< [in] Number of valid items in the tile
+        const SizeT     &guarded_items)             ///< [in] Number of valid items in the tile
     {
-        StoreInternal<POLICY>::Store(smem_storage, items, itr, cta_offset, guarded_elements);
+        StoreInternal<POLICY>::Store(smem_storage, items, itr, cta_offset, guarded_items);
     }
 };
 

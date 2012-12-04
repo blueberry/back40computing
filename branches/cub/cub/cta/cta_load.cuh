@@ -133,14 +133,14 @@ __device__ __forceinline__ void CtaLoadDirect(
     T               (&items)[ITEMS_PER_THREAD],     ///< [out] Data to load
     InputIterator   itr,                            ///< [in] Input iterator for loading from
     const SizeT     &cta_offset,                    ///< [in] Offset in \p itr at which to load the tile
-    const SizeT     &guarded_elements)              ///< [in] Number of valid items in the tile
+    const SizeT     &guarded_items)              ///< [in] Number of valid items in the tile
 {
     // Load directly in thread-blocked order
     #pragma unroll
     for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
     {
         int item_offset = (threadIdx.x * ITEMS_PER_THREAD) + ITEM;
-        if (item_offset < guarded_elements)
+        if (item_offset < guarded_items)
         {
             items[ITEM] = ThreadLoad<MODIFIER>(itr + cta_offset + item_offset);
         }
@@ -169,9 +169,75 @@ __device__ __forceinline__ void CtaLoadDirect(
     T               (&items)[ITEMS_PER_THREAD],     ///< [out] Data to load
     InputIterator   itr,                            ///< [in] Input iterator for loading from
     const SizeT     &cta_offset,                    ///< [in] Offset in \p itr at which to load the tile
-    const SizeT     &guarded_elements)              ///< [in] Number of valid items in the tile
+    const SizeT     &guarded_items)              ///< [in] Number of valid items in the tile
 {
-    CtaLoadDirect<PTX_LOAD_NONE>(items, itr, cta_offset, guarded_elements);
+    CtaLoadDirect<PTX_LOAD_NONE>(items, itr, cta_offset, guarded_items);
+}
+
+
+/**
+ * \brief Load a tile of items across CTA threads directly using the specified cache modifier, guarded by range, with assignment for out-of-bound elements
+ *
+ * \tparam MODIFIER             cub::PtxLoadModifier cache modifier.
+ * \tparam T                    <b>[inferred]</b> The data type to load.
+ * \tparam ITEMS_PER_THREAD     <b>[inferred]</b> The number of consecutive items partitioned onto each thread.
+ * \tparam InputIterator        <b>[inferred]</b> The input iterator type (may be a simple pointer).
+ * \tparam SizeT                <b>[inferred]</b> Integer type for offsets
+ *
+ * The aggregate tile of items is assumed to be partitioned evenly across
+ * threads in "blocked" fashion with thread<sub><em>i</em></sub> owning
+ * the <em>i</em><sup>th</sup> segment of consecutive elements.
+ */
+template <
+    PtxLoadModifier MODIFIER,
+    typename        T,
+    int             ITEMS_PER_THREAD,
+    typename        InputIterator,
+    typename        SizeT>
+__device__ __forceinline__ void CtaLoadDirect(
+    T               (&items)[ITEMS_PER_THREAD],     ///< [out] Data to load
+    InputIterator   itr,                            ///< [in] Input iterator for loading from
+    const SizeT     &cta_offset,                    ///< [in] Offset in \p itr at which to load the tile
+    const SizeT     &guarded_items,              ///< [in] Number of valid items in the tile
+    T               oob_default)                    ///< [in] Default value to assign out-of-bound items
+{
+    // Load directly in thread-blocked order
+    #pragma unroll
+    for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
+    {
+        int item_offset = (threadIdx.x * ITEMS_PER_THREAD) + ITEM;
+        items[ITEM] =  (item_offset < guarded_items) ?
+            ThreadLoad<MODIFIER>(itr + cta_offset + item_offset) :
+            oob_default;
+    }
+}
+
+
+/**
+ * \brief Load a tile of items across CTA threads directly, guarded by range, with assignment for out-of-bound elements
+ *
+ * \tparam T                    <b>[inferred]</b> The data type to load.
+ * \tparam ITEMS_PER_THREAD     <b>[inferred]</b> The number of consecutive items partitioned onto each thread.
+ * \tparam InputIterator        <b>[inferred]</b> The input iterator type (may be a simple pointer).
+ * \tparam SizeT                <b>[inferred]</b> Integer type for offsets
+ *
+ * The aggregate tile of items is assumed to be partitioned evenly across
+ * threads in "blocked" fashion with thread<sub><em>i</em></sub> owning
+ * the <em>i</em><sup>th</sup> segment of consecutive elements.
+ */
+template <
+    typename        T,
+    int             ITEMS_PER_THREAD,
+    typename        InputIterator,
+    typename        SizeT>
+__device__ __forceinline__ void CtaLoadDirect(
+    T               (&items)[ITEMS_PER_THREAD],     ///< [out] Data to load
+    InputIterator   itr,                            ///< [in] Input iterator for loading from
+    const SizeT     &cta_offset,                    ///< [in] Offset in \p itr at which to load the tile
+    const SizeT     &guarded_items,              ///< [in] Number of valid items in the tile
+    T               oob_default)                    ///< [in] Default value to assign out-of-bound items
+{
+    CtaLoadDirect<PTX_LOAD_NONE>(items, itr, cta_offset, guarded_items, oob_default);
 }
 
 
@@ -271,14 +337,14 @@ __device__ __forceinline__ void CtaLoadDirectStriped(
     T               (&items)[ITEMS_PER_THREAD],     ///< [out] Data to load
     InputIterator   itr,                            ///< [in] Input iterator for loading from
     const SizeT     &cta_offset,                    ///< [in] Offset in \p itr at which to load the tile
-    const SizeT     &guarded_elements)              ///< [in] Number of valid items in the tile
+    const SizeT     &guarded_items)              ///< [in] Number of valid items in the tile
 {
     // Load directly in striped order
     #pragma unroll
     for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
     {
         int item_offset = (ITEM * CTA_THREADS) + threadIdx.x;
-        if (item_offset < guarded_elements)
+        if (item_offset < guarded_items)
         {
             items[ITEM] = ThreadLoad<MODIFIER>(itr + cta_offset + item_offset);
         }
@@ -309,9 +375,79 @@ __device__ __forceinline__ void CtaLoadDirectStriped(
     T               (&items)[ITEMS_PER_THREAD],     ///< [out] Data to load
     InputIterator   itr,                            ///< [in] Input iterator for loading from
     const SizeT     &cta_offset,                    ///< [in] Offset in \p itr at which to load the tile
-    const SizeT     &guarded_elements)              ///< [in] Number of valid items in the tile
+    const SizeT     &guarded_items)              ///< [in] Number of valid items in the tile
 {
-    CtaLoadDirectStriped<CTA_THREADS, PTX_LOAD_NONE>(items, itr, cta_offset, guarded_elements);
+    CtaLoadDirectStriped<CTA_THREADS, PTX_LOAD_NONE>(items, itr, cta_offset, guarded_items);
+}
+
+
+/**
+ * \brief Load striped directly tile using the specified cache modifier, guarded by range, with assignment for out-of-bound elements
+ *
+ * \tparam CTA_THREADS          The CTA size in threads
+ * \tparam MODIFIER             cub::PtxLoadModifier cache modifier.
+ * \tparam T                    <b>[inferred]</b> The data type to load.
+ * \tparam ITEMS_PER_THREAD     <b>[inferred]</b> The number of consecutive items partitioned onto each thread.
+ * \tparam InputIterator        <b>[inferred]</b> The input iterator type (may be a simple pointer).
+ * \tparam SizeT                <b>[inferred]</b> Integer type for offsets
+ *
+ * The aggregate tile of items is assumed to be partitioned across
+ * threads in "striped" fashion, i.e., the \p ITEMS_PER_THREAD
+ * items owned by each thread have logical stride \p CTA_THREADS between them.
+ */
+template <
+    int             CTA_THREADS,
+    PtxLoadModifier MODIFIER,
+    typename        T,
+    int             ITEMS_PER_THREAD,
+    typename        InputIterator,
+    typename        SizeT>
+__device__ __forceinline__ void CtaLoadDirectStriped(
+    T               (&items)[ITEMS_PER_THREAD],     ///< [out] Data to load
+    InputIterator   itr,                            ///< [in] Input iterator for loading from
+    const SizeT     &cta_offset,                    ///< [in] Offset in \p itr at which to load the tile
+    const SizeT     &guarded_items,              ///< [in] Number of valid items in the tile
+    T               oob_default)                    ///< [in] Default value to assign out-of-bound items
+{
+    // Load directly in striped order
+    #pragma unroll
+    for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
+    {
+        int item_offset = (ITEM * CTA_THREADS) + threadIdx.x;
+        items[ITEM] = (item_offset < guarded_items) ?
+             ThreadLoad<MODIFIER>(itr + cta_offset + item_offset) :
+             oob_default;
+    }
+}
+
+
+/**
+ * \brief Load striped tile directly, guarded by range, with assignment for out-of-bound elements
+ *
+ * \tparam CTA_THREADS          The CTA size in threads
+ * \tparam T                    <b>[inferred]</b> The data type to load.
+ * \tparam ITEMS_PER_THREAD     <b>[inferred]</b> The number of consecutive items partitioned onto each thread.
+ * \tparam InputIterator        <b>[inferred]</b> The input iterator type (may be a simple pointer).
+ * \tparam SizeT                <b>[inferred]</b> Integer type for offsets
+ *
+ * The aggregate tile of items is assumed to be partitioned across
+ * threads in "striped" fashion, i.e., the \p ITEMS_PER_THREAD
+ * items owned by each thread have logical stride \p CTA_THREADS between them.
+ */
+template <
+    int             CTA_THREADS,
+    typename        T,
+    int             ITEMS_PER_THREAD,
+    typename        InputIterator,
+    typename        SizeT>
+__device__ __forceinline__ void CtaLoadDirectStriped(
+    T               (&items)[ITEMS_PER_THREAD],     ///< [out] Data to load
+    InputIterator   itr,                            ///< [in] Input iterator for loading from
+    const SizeT     &cta_offset,                    ///< [in] Offset in \p itr at which to load the tile
+    const SizeT     &guarded_items,              ///< [in] Number of valid items in the tile
+    T               oob_default)                    ///< [in] Default value to assign out-of-bound items
+{
+    CtaLoadDirectStriped<CTA_THREADS, PTX_LOAD_NONE>(items, itr, cta_offset, guarded_items, oob_default);
 }
 
 //@}
@@ -587,9 +723,9 @@ private:
             T               (&items)[ITEMS_PER_THREAD], ///< [out] Data to load
             InputIterator   itr,                        ///< [in] Input iterator for loading from
             const SizeT     &cta_offset,                ///< [in] Offset in \p itr at which to load the tile
-            const SizeT     &guarded_elements)          ///< [in] Number of valid items in the tile
+            const SizeT     &guarded_items)          ///< [in] Number of valid items in the tile
         {
-            CtaLoadDirect<PTX_LOAD_NONE>(items, itr, cta_offset, guarded_elements);
+            CtaLoadDirect<PTX_LOAD_NONE>(items, itr, cta_offset, guarded_items);
         }
     };
 
@@ -635,9 +771,9 @@ private:
             T               (&items)[ITEMS_PER_THREAD], ///< [out] Data to load
             InputIterator   itr,                        ///< [in] Input iterator for loading from
             const SizeT     &cta_offset,                ///< [in] Offset in \p itr at which to load the tile
-            const SizeT     &guarded_elements)          ///< [in] Number of valid items in the tile
+            const SizeT     &guarded_items)          ///< [in] Number of valid items in the tile
         {
-            CtaLoadDirect<PTX_LOAD_NONE>(items, itr, cta_offset, guarded_elements);
+            CtaLoadDirect<PTX_LOAD_NONE>(items, itr, cta_offset, guarded_items);
         }
     };
 
@@ -675,9 +811,9 @@ private:
             T               (&items)[ITEMS_PER_THREAD], ///< [out] Data to load
             InputIterator   itr,                        ///< [in] Input iterator for loading from
             const SizeT     &cta_offset,                ///< [in] Offset in \p itr at which to load the tile
-            const SizeT     &guarded_elements)          ///< [in] Number of valid items in the tile
+            const SizeT     &guarded_items)          ///< [in] Number of valid items in the tile
         {
-            CtaLoadDirectStriped<CTA_THREADS, PTX_LOAD_NONE>(items, itr, cta_offset, guarded_elements);
+            CtaLoadDirectStriped<CTA_THREADS, PTX_LOAD_NONE>(items, itr, cta_offset, guarded_items);
 
             // Transpose to blocked order
             CtaExchange::StripedToBlocked(smem_storage, items);
@@ -729,9 +865,9 @@ public:
         T               (&items)[ITEMS_PER_THREAD], ///< [out] Data to load
         InputIterator   itr,                        ///< [in] Input iterator for loading from
         const SizeT     &cta_offset,                ///< [in] Offset in \p itr at which to load the tile
-        const SizeT     &guarded_elements)          ///< [in] Number of valid items in the tile
+        const SizeT     &guarded_items)             ///< [in] Number of valid items in the tile
     {
-        LoadInternal<POLICY>::Load(smem_storage, items, itr, cta_offset, guarded_elements);
+        LoadInternal<POLICY>::Load(smem_storage, items, itr, cta_offset, guarded_items);
     }
 };
 
