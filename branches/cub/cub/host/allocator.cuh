@@ -550,7 +550,7 @@ struct CachedAllocator
 /**
  * Singleton factory for unit-wide cached allocator
  */
-template <typename T>
+template <typename Dummy>
 CachedAllocator* CubCachedAllocator()
 {
 	static CachedAllocator allocator;

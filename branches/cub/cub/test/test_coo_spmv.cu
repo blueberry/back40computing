@@ -26,6 +26,7 @@
 
 #include <iterator>
 #include <vector>
+#include <algorithm>
 #include <stdio.h>
 #include <test_util.h>
 
@@ -62,6 +63,7 @@ struct CooGraph
         VertexId            col;
         Value               val;
 
+        CooTuple() {}
         CooTuple(VertexId row, VertexId col) : row(row), col(col) {}
         CooTuple(VertexId row, VertexId col, Value val) : row(row), col(col), val(val) {}
     };
@@ -83,9 +85,24 @@ struct CooGraph
         return false;
     }
 
-    int                                     row_dim;        // Num rows
-    int                                     col_dim;        // Num cols
-    vector<CooTuple<VertexId, Value> >      coo_tuples;     // Non-zero entries
+    int                 row_dim;        // Num rows
+    int                 col_dim;        // Num cols
+    vector<CooTuple>    coo_tuples;     // Non-zero entries
+
+
+    /**
+     * CooGraph ostream operator
+     */
+    friend std::ostream& operator<<(std::ostream& os, const CooGraph& coo_graph)
+    {
+        os << "Sparse COO (" << coo_graph.row_dim << " rows, " << coo_graph.col_dim << " cols, " << coo_graph.coo_tuples.size() << " nonzeros):\n";
+        os << "Ordinal, Row, Col, Val\n";
+        for (int i = 0; i < coo_graph.coo_tuples.size(); i++)
+        {
+            os << i << ',' << coo_graph.coo_tuples[i].row << ',' << coo_graph.coo_tuples[i].col << ',' << coo_graph.coo_tuples[i].val << "\n";
+        }
+        return os;
+    }
 
     /**
      * Update graph dims based upon COO tuples
@@ -120,7 +137,9 @@ struct CooGraph
         VertexId edges                 = (interior_nodes * 6) + (face_nodes * 5) + (edge_nodes * 4) + (corner_nodes * 3) + nodes;
 
         coo_tuples.clear();
-        coo_tuples.resize(edges);
+        coo_tuples.reserve(edges);
+
+        printf("Generating width(%d), edges(%d)\n", width, edges);
 
         for (VertexId i = 0; i < width; i++) {
             for (VertexId j = 0; j < width; j++) {
@@ -165,11 +184,12 @@ struct CooGraph
         }
 
         // Sort by rows, then columns
-        std::stable_sort(coo_tuples, coo_tuples + edges, CooTupleCompare<CooTuple>);
+        std::stable_sort(coo_tuples.begin(), coo_tuples.end(), CooTupleCompare);
 
         UpdateDims();
     }
 };
+
 
 
 
@@ -184,23 +204,16 @@ struct PartialSum
     Value       partial;        /// PartialSum sum
     VertexId    row;            /// Row-id
 
-    /// Default Constructor
-    PartialSum() {}
-
-    /// Constructor
-    PartialSum(Value partial, VertexId row) : partial(partial), row(flag) {}
-
     /// Tags indicating this structure provides overloaded ThreadLoad and ThreadStore operations
     typedef void ThreadLoadTag;
     typedef void ThreadStoreTag;
 
     /// ThreadLoad (simply defer to loading individual items)
     template <PtxLoadModifier MODIFIER>
-    __device__ __forceinline__
-    void ThreadLoad(PartialSum *ptr)
+    __device__ __forceinline__ void ThreadLoad(PartialSum *ptr)
     {
-        partial = ThreadLoad<MODIFIER>(&(ptr->partial));
-        row = ThreadLoad<MODIFIER>(&(ptr->row));
+        partial = cub::ThreadLoad<MODIFIER>(&(ptr->partial));
+        row = cub::ThreadLoad<MODIFIER>(&(ptr->row));
     }
 
      /// ThreadStore (simply defer to storing individual items)
@@ -208,32 +221,36 @@ struct PartialSum
     __device__ __forceinline__ void ThreadStore(PartialSum *ptr) const
     {
         // Always write partial first
-        ThreadStore<MODIFIER>(&(ptr->partial), partial);
-        ThreadStore<MODIFIER>(&(ptr->row), row);
+        cub::ThreadStore<MODIFIER>(&(ptr->partial), partial);
+        cub::ThreadStore<MODIFIER>(&(ptr->row), row);
     }
 };
 
 /// Reduce-by-row scan operator
 struct ScanOp
 {
-    __device__ __forceinline__ PartialSum operator()(
-        const PartialSum &first,
-        const PartialSum &second)
+    template <typename VertexId, typename Value>
+    __device__ __forceinline__ PartialSum<VertexId, Value> operator()(
+        const PartialSum<VertexId, Value> &first,
+        const PartialSum<VertexId, Value> &second)
     {
-        return PartialSum(
-            (second.row != first.row) ?
+        PartialSum<VertexId, Value> retval;
+        retval.partial = (second.row != first.row) ?
                 second.partial :
-                first.partial + second.partial,
-            second.row);
+                first.partial + second.partial;
+        retval.row = second.row;
+        return retval;
     }
 };
 
 
 /// Returns true if row_b is the start of a new row
-template <typename VertexId>
 struct NewRowOp
 {
-    bool operator()(const VertexId& row_a, const VertexId& row_b)
+    template <typename VertexId>
+    __device__ __forceinline__ bool operator()(
+        const VertexId& row_a,
+        const VertexId& row_b)
     {
         return (row_a != row_b);
     }
@@ -244,7 +261,6 @@ struct NewRowOp
 // GPU kernels
 //---------------------------------------------------------------------
 
-
 /**
  * COO SpMV kernel
  */
@@ -253,7 +269,6 @@ template <
     int             ITEMS_PER_THREAD,
     typename        VertexId,
     typename        Value>
-__launch_bounds__ (CTA_THREADS)
 __global__ void Kernel(
     int                             row_dim,
     int                             col_dim,
@@ -276,15 +291,15 @@ __global__ void Kernel(
     };
 
     // Head flag type
-    typedef int                                         HeadFlag;
+    typedef int                                                     HeadFlag;
 
     // Dot product partial sum type
-    typedef PartialSum<VertexId, Value>                 PartialSum;
+    typedef PartialSum<VertexId, Value>                             PartialSum;
 
     // Parameterize cooperative CUB types for use in the current problem context
-    typedef CtaScan<PartialSum, CTA_THREADS>            CtaScan;
-    typedef CtaExchange<PartialSum, CTA_THREADS>        CtaExchange;
-    typedef CtaDiscontinuity<HeadFlag, CTA_THREADS>     CtaDiscontinuity;
+    typedef CtaScan<PartialSum, CTA_THREADS>                        CtaScan;
+    typedef CtaExchange<PartialSum, CTA_THREADS, ITEMS_PER_THREAD>  CtaExchange;
+    typedef CtaDiscontinuity<HeadFlag, CTA_THREADS>                 CtaDiscontinuity;
 
     // Shared memory type for this CTA
     struct SmemStorage
@@ -329,7 +344,7 @@ __global__ void Kernel(
 
         CtaLoadDirectStriped(rows, d_rows, cta_offset, guarded_items, last_row);
         CtaLoadDirectStriped(columns, d_columns, cta_offset, guarded_items, last_column);
-        CtaLoadDirectStriped(values, d_values, cta_offset, guarded_items, 0.0);
+        CtaLoadDirectStriped(values, d_values, cta_offset, guarded_items, Value(0.0));
     }
     else
     {
@@ -340,7 +355,7 @@ __global__ void Kernel(
     }
 
     // Fence to prevent hoisting any dependent code below into the loads above
-    threadfence_block();
+    __threadfence_block();
 
     // Load the referenced values from x and compute dot product partial_sums
     #pragma unroll
@@ -366,9 +381,10 @@ __global__ void Kernel(
     }
 
     // Compute exclusive scan of partial_sums
+    VertexId        first_row = d_rows[cta_offset];
     ScanOp          scan_op;                                // Reduce-by-row scan operator
     PartialSum      aggregate;                              // CTA-wide aggregate in thread0
-    PartialSum      identity(0.0, d_rows[cta_offset]);      // Zero-valued identity (with row-id of first item)
+    PartialSum      identity = {0.0, first_row};      // Zero-valued identity (with row-id of first item)
 
     CtaScan::ExclusiveScan(
         s_storage.scan,
@@ -389,7 +405,8 @@ __global__ void Kernel(
         if (blockIdx.x == 0)
         {
             // First CTA has no prior aggregate
-            prev_aggregate = identity;
+            prev_aggregate.row = first_row;
+            prev_aggregate.partial = 0.0;
         }
         else
         {
@@ -415,12 +432,6 @@ __global__ void Kernel(
         partial_sums[ITEM] = scan_op(s_storage.prev_aggregate, partial_sums[ITEM]);
     }
 
-    // First item of first thread should be the previous CTA's aggregate (and not identity)
-    if (threadIdx.x == 0)
-    {
-        partial_sums[0] = s_storage.prev_aggregate;
-    }
-
     // Flag row heads using saved row ids
     CtaDiscontinuity::Flag(
         s_storage.discontinuity,
@@ -429,12 +440,27 @@ __global__ void Kernel(
         NewRowOp(),
         head_flags);                    // (out) Head flags
 
+    // First item of first thread should be the previous CTA's aggregate (and not identity)
+    if (threadIdx.x == 0)
+    {
+        partial_sums[0] = s_storage.prev_aggregate;
+    }
+
     // Scatter dot products if a row head of a valid row
     #pragma unroll
     for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
     {
-        if (head_flags[ITEM] && (partial_sums[ITEM].row > 0))
+        if (head_flags[ITEM] && (partial_sums[ITEM].row >= 0))
         {
+            if (threadIdx.x < 8)
+            printf("tid(%d) item(%d) row(%d) flag(%d) partial_sum(%.1f @ row %d)\n",
+                threadIdx.x,
+                ITEM,
+                rows[ITEM],
+                head_flags[ITEM],
+                partial_sums[ITEM].partial,
+                partial_sums[ITEM].row);
+
             d_result[partial_sums[ITEM].row] = partial_sums[ITEM].partial;
         }
     }
@@ -465,7 +491,7 @@ void TestDevice(
     Value*                      h_vector,
     Value*                      h_reference)
 {
-    if (iterations <= 0) return;
+    if (g_iterations <= 0) return;
 
     const int TILE_SIZE = CTA_THREADS * ITEMS_PER_THREAD;
 
@@ -491,7 +517,7 @@ void TestDevice(
     }
 
     // Allocate COO device arrays
-    CachedAllocator *allocator = CubCachedAllocator();
+    CachedAllocator *allocator = CubCachedAllocator<void>();
     CubDebugExit(allocator->Allocate((void**)&d_rows,       sizeof(VertexId) * num_vertices));
     CubDebugExit(allocator->Allocate((void**)&d_columns,    sizeof(VertexId) * num_vertices));
     CubDebugExit(allocator->Allocate((void**)&d_values,     sizeof(Value) * num_vertices));
@@ -510,6 +536,11 @@ void TestDevice(
     // Figure out launch params and allocate temporaries
     int grid_size = (num_vertices + TILE_SIZE - 1) / TILE_SIZE;
     CubDebugExit(allocator->Allocate((void**)&d_cta_aggregates, sizeof(PartialSum<VertexId, Value>) * grid_size));
+    if (g_verbose) printf("Kernel<%d, %d><<<%d, %d>>>(...)\n",
+        CTA_THREADS,
+        ITEMS_PER_THREAD,
+        grid_size,
+        CTA_THREADS);
 
     // Run kernel
     GpuTimer gpu_timer;
@@ -518,7 +549,7 @@ void TestDevice(
     {
         gpu_timer.Start();
 
-        Kernel<CTA_THREADS, ITEMS_PER_THREAD><<<grid_size, CTA_THERADS>>>(
+        Kernel<CTA_THREADS, ITEMS_PER_THREAD><<<grid_size, CTA_THREADS>>>(
             coo_graph.row_dim,
             coo_graph.col_dim,
             num_vertices,
@@ -531,10 +562,13 @@ void TestDevice(
 
         gpu_timer.Stop();
         elapsed_millis = gpu_timer.ElapsedMillis();
+
+        // Force any kernel stdio to screen
+        CubDebugExit(cudaThreadSynchronize());
     }
 
     // Display timing
-    float avg_elapsed = elapsed_millis / iterations;
+    float avg_elapsed = elapsed_millis / g_iterations;
     int total_bytes = ((sizeof(VertexId) + sizeof(VertexId) + sizeof(Value)) * num_vertices) + (sizeof(Value) * 2 * coo_graph.row_dim);
     printf("Average elapsed (%.3f ms), utilized bandwidth (%.3f GB/s), GFLOPS(%.3f)\n",
         avg_elapsed,
@@ -570,10 +604,10 @@ void ComputeReference(
         h_reference[i] = 0.0;
     }
 
-    for (VertexId i = 0; i < num_vertices; i++)
+    for (VertexId i = 0; i < coo_graph.coo_tuples.size(); i++)
     {
         h_reference[coo_graph.coo_tuples[i].row] +=
-            coo_graph.coo_tuples[i].value *
+            coo_graph.coo_tuples[i].val *
             h_vector[coo_graph.coo_tuples[i].col];
     }
 }
@@ -585,7 +619,7 @@ void ComputeReference(
 template <typename CooGraph>
 void AssignGraphValues(CooGraph &coo_graph)
 {
-    for (VertexId i = 0; i < coo_graph.coo_tuples.size(); i++)
+    for (int i = 0; i < coo_graph.coo_tuples.size(); i++)
     {
         coo_graph.coo_tuples[i].val = i;
     }
@@ -596,11 +630,11 @@ void AssignGraphValues(CooGraph &coo_graph)
  * Assign arbitrary values to vector items
  */
 template <typename Value>
-void AssignVectorValues(Value *vector, VertexId col_dim)
+void AssignVectorValues(Value *vector, int col_dim)
 {
-    for (VertexId i = 0; i < col_dim; i++)
+    for (int i = 0; i < col_dim; i++)
     {
-        coo_tuples[i] = 1.0;
+        vector[i] = 1.0;
     }
 }
 
@@ -643,7 +677,7 @@ int main(int argc, char** argv)
     {
         VertexId width;
         args.GetCmdLineArgument("width", width);
-        coo_graph.InitGrid3d(width, coo_graph);
+        coo_graph.InitGrid3d(width);
     }
     else
     {
@@ -652,19 +686,33 @@ int main(int argc, char** argv)
     }
     AssignGraphValues(coo_graph);
 
+    if (g_verbose)
+    {
+        cout << coo_graph << "\n";
+    }
+
     // Create vector
     Value *h_vector = new Value[coo_graph.col_dim];
     AssignVectorValues(h_vector, coo_graph.col_dim);
+    if (g_verbose)
+    {
+        printf("Vector[%d]: ", coo_graph.col_dim);
+        DisplayResults(h_vector, coo_graph.col_dim);
+        printf("\n\n");
+    }
 
     // Compute reference answer
     Value *h_reference = new Value[coo_graph.row_dim];
-    ComputeReference(coo_graph, h_vector, h_refernece);
+    ComputeReference(coo_graph, h_vector, h_reference);
+    if (g_verbose)
+    {
+        printf("Results[%d]: ", coo_graph.row_dim);
+        DisplayResults(h_reference, coo_graph.row_dim);
+        printf("\n\n");
+    }
 
     // Run GPU version
-    TestDevice(coo_graph, h_vector, h_reference);
-
-    // Force any kernel stdio to screen
-    CubDebugExit(cudaThreadSynchronize());
+    TestDevice<128, 4>(coo_graph, h_vector, h_reference);
 
     // Cleanup
     delete h_vector;

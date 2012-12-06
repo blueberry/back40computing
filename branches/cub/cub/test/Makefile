@@ -109,6 +109,15 @@ DEPS = 	./Makefile \
 
 
 #-------------------------------------------------------------------------------
+# make clean
+#-------------------------------------------------------------------------------
+
+clean :
+	rm -f bin/*$(ARCH_SUFFIX)* 
+	rm -f *.i* *.cubin *.cu.c *.cudafe* *.fatbin.c *.ptx *.hash *.cu.cpp *.o
+
+
+#-------------------------------------------------------------------------------
 # make test_allocator 
 #-------------------------------------------------------------------------------
 
@@ -185,14 +194,14 @@ bin/test_cta_radix_sort_$(SUFFIX) : test_cta_radix_sort.cu $(DEPS)
 	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_cta_radix_sort_$(SUFFIX) test_cta_radix_sort.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3
 
 
+
 #-------------------------------------------------------------------------------
-# make clean
+# make test_coo_spmv
 #-------------------------------------------------------------------------------
 
-clean :
-	rm -f bin/*$(ARCH_SUFFIX)* 
-	rm -f *.i* *.cubin *.cu.c *.cudafe* *.fatbin.c *.ptx *.hash *.cu.cpp *.o
+test_coo_spmv: bin/test_coo_spmv_$(SUFFIX)
 
-
-
+bin/test_coo_spmv_$(SUFFIX) : test_coo_spmv.cu $(DEPS)
+	mkdir -p bin
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_coo_spmv_$(SUFFIX) test_coo_spmv.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3
 

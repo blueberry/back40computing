@@ -101,22 +101,22 @@ public:
      * \smemreuse
      *
      * \tparam ITEMS_PER_THREAD     <b>[inferred]</b> The number of consecutive items partitioned onto each thread.
-     * \tparam Flag                 <b>[inferred]</b> The flag type (must be an integer type)
+     * \tparam FlagT                 <b>[inferred]</b> The flag type (must be an integer type)
      * \tparam FlagOp               <b>[inferred]</b> Binary boolean functor type, having input parameters <tt>(const T &a, const T &b)</tt> and returning \p true if a discontinuity exists between \p a and \p b, otherwise \p false.
      */
     template <
         int             ITEMS_PER_THREAD,
-        typename        Flag,
+        typename        FlagT,
         typename        FlagOp>
     static __device__ __forceinline__ void Flag(
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
         T               (&input)[ITEMS_PER_THREAD],     ///< [in] Input items
         FlagOp          flag_op,                        ///< [in] Binary boolean flag predicate
-        Flag            (&flags)[ITEMS_PER_THREAD],     ///< [out] Discontinuity flags
+        FlagT           (&flags)[ITEMS_PER_THREAD],     ///< [out] Discontinuity flags
         T               &last_tile_item)                ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> The last tile item (<tt>input<sub><em>ITEMS_PER_THREAD</em>-1</sub></tt> from thread<sub><tt><em>CTA_THREADS</em></tt>-1</sub>)
     {
         // Share last item
-        smem_storage.last_items[threadIdx.x] = input[ITEMS_PER_THERAD - 1];
+        smem_storage.last_items[threadIdx.x] = input[ITEMS_PER_THREAD - 1];
 
         __syncthreads();
 
@@ -128,7 +128,7 @@ public:
         }
         else
         {
-            flags[0] = flag_op(last_items[threadIdx.x - 1], input[0]);
+            flags[0] = flag_op(smem_storage.last_items[threadIdx.x - 1], input[0]);
         }
 
 
@@ -157,18 +157,18 @@ public:
      * \smemreuse
      *
      * \tparam ITEMS_PER_THREAD     <b>[inferred]</b> The number of consecutive items partitioned onto each thread.
-     * \tparam Flag                 <b>[inferred]</b> The flag type (must be an integer type)
+     * \tparam FlagT                 <b>[inferred]</b> The flag type (must be an integer type)
      * \tparam FlagOp               <b>[inferred]</b> Binary boolean functor type, having input parameters <tt>(const T &a, const T &b)</tt> and returning \p true if a discontinuity exists between \p a and \p b, otherwise \p false.
      */
     template <
         int             ITEMS_PER_THREAD,
-        typename        Flag,
+        typename        FlagT,
         typename        FlagOp>
     static __device__ __forceinline__ void Flag(
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
         T               (&input)[ITEMS_PER_THREAD],     ///< [in] Input items
         FlagOp          flag_op,                        ///< [in] Binary boolean flag predicate
-        Flag            (&flags)[ITEMS_PER_THREAD])     ///< [out] Discontinuity flags
+        FlagT           (&flags)[ITEMS_PER_THREAD])     ///< [out] Discontinuity flags
     {
         T last_tile_item;   // discard
         Flag(smem_storage, input, flag_op, flags, last_tile_item);
@@ -192,23 +192,23 @@ public:
      * \smemreuse
      *
      * \tparam ITEMS_PER_THREAD     <b>[inferred]</b> The number of consecutive items partitioned onto each thread.
-     * \tparam Flag                 <b>[inferred]</b> The flag type (must be an integer type)
+     * \tparam FlagT                 <b>[inferred]</b> The flag type (must be an integer type)
      * \tparam FlagOp               <b>[inferred]</b> Binary boolean functor type, having input parameters <tt>(const T &a, const T &b)</tt> and returning \p true if a discontinuity exists between \p a and \p b, otherwise \p false.
      */
     template <
         int             ITEMS_PER_THREAD,
-        typename        Flag,
+        typename        FlagT,
         typename        FlagOp>
     static __device__ __forceinline__ void Flag(
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
         T               (&input)[ITEMS_PER_THREAD],     ///< [in] Input items
         T               tile_prefix,                    ///< [in] <b>[<em>thread</em><sub>0</sub> only]</b> Item with which to compare the first tile item (<tt>input<sub>0</sub></tt>from <em>thread</em><sub>0</sub>).
         FlagOp          flag_op,                        ///< [in] Binary boolean flag predicate
-        Flag            (&flags)[ITEMS_PER_THREAD],     ///< [out] Discontinuity flags
+        FlagT           (&flags)[ITEMS_PER_THREAD],     ///< [out] Discontinuity flags
         T               &last_tile_item)                ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> The last tile item (<tt>input<sub><em>ITEMS_PER_THREAD</em>-1</sub></tt> from <em>thread</em><sub><tt><em>CTA_THREADS</em></tt>-1</sub>)
     {
         // Share last item
-        smem_storage.last_items[threadIdx.x] = input[ITEMS_PER_THERAD - 1];
+        smem_storage.last_items[threadIdx.x] = input[ITEMS_PER_THREAD - 1];
 
         __syncthreads();
 
@@ -221,7 +221,7 @@ public:
         }
         else
         {
-            prefix = last_items[threadIdx.x - 1];
+            prefix = smem_storage.last_items[threadIdx.x - 1];
         }
         flags[0] = flag_op(prefix, input[0]);
 
@@ -251,19 +251,19 @@ public:
      * \smemreuse
      *
      * \tparam ITEMS_PER_THREAD     <b>[inferred]</b> The number of consecutive items partitioned onto each thread.
-     * \tparam Flag                 <b>[inferred]</b> The flag type (must be an integer type)
+     * \tparam FlagT                 <b>[inferred]</b> The flag type (must be an integer type)
      * \tparam FlagOp               <b>[inferred]</b> Binary boolean functor type, having input parameters <tt>(const T &a, const T &b)</tt> and returning \p true if a discontinuity exists between \p a and \p b, otherwise \p false.
      */
     template <
         int             ITEMS_PER_THREAD,
-        typename        Flag,
+        typename        FlagT,
         typename        FlagOp>
     static __device__ __forceinline__ void Flag(
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
         T               (&input)[ITEMS_PER_THREAD],     ///< [in] Input items
         T               tile_prefix,                    ///< [in] <b>[<em>thread</em><sub>0</sub> only]</b> Item with which to compare the first tile item (<tt>input<sub>0</sub></tt>from <em>thread</em><sub>0</sub>).
         FlagOp          flag_op,                        ///< [in] Binary boolean flag predicate
-        Flag            (&flags)[ITEMS_PER_THREAD])     ///< [out] Discontinuity flags
+        FlagT           (&flags)[ITEMS_PER_THREAD])     ///< [out] Discontinuity flags
     {
         T last_tile_item;   // discard
         Flag(smem_storage, input, tile_prefix, flag_op, flags, last_tile_item);
