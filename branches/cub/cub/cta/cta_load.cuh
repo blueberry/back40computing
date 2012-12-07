@@ -404,7 +404,7 @@ __device__ __forceinline__ void CtaLoadDirectStriped(
     #pragma unroll
     for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
     {
-        int item_offset = (ITEM * blockIdx.x) + threadIdx.x;
+        int item_offset = (ITEM * blockDim.x) + threadIdx.x;
         items[ITEM] = (item_offset < guarded_items) ?
              ThreadLoad<MODIFIER>(itr + cta_offset + item_offset) :
              oob_default;
@@ -626,7 +626,7 @@ enum CtaLoadPolicy
  *      __global__ void SomeKernel(int *d_in, ...)
  *      {
  *          // Parameterize a CtaLoad type for use in the current problem context
- *          typedef cub::CtaLoad<int, CTA_THREADS, 4> CtaLoad;
+ *          typedef cub::CtaLoad<int, 128, 4> CtaLoad;
  *
  *          // Declare shared memory for CtaLoad
  *          __shared__ typename CtaLoad::SmemStorage smem_storage;

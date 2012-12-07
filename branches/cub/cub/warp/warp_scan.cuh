@@ -506,7 +506,7 @@ private:
                 if (HAS_IDENTITY || (lane_id >= OFFSET))
                 {
                     T addend = ThreadLoad<PTX_LOAD_VS>(&smem_storage.warp_scan[warp_id][HALF_WARP_THREADS + lane_id - OFFSET]);
-                    partial = scan_op(partial, addend);
+                    partial = scan_op(addend, partial);
                 }
             }
 

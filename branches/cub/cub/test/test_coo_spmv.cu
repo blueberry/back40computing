@@ -139,8 +139,6 @@ struct CooGraph
         coo_tuples.clear();
         coo_tuples.reserve(edges);
 
-        printf("Generating width(%d), edges(%d)\n", width, edges);
-
         for (VertexId i = 0; i < width; i++) {
             for (VertexId j = 0; j < width; j++) {
                 for (VertexId k = 0; k < width; k++) {
@@ -183,10 +181,10 @@ struct CooGraph
             }
         }
 
-        // Sort by rows, then columns
+        // Sort by rows, then columns, update dims
         std::stable_sort(coo_tuples.begin(), coo_tuples.end(), CooTupleCompare);
-
         UpdateDims();
+
     }
 };
 
@@ -194,7 +192,7 @@ struct CooGraph
 
 
 //---------------------------------------------------------------------
-// Kernel types and constants
+// CooKernel types and constants
 //---------------------------------------------------------------------
 
 /// Pairing of dot product partial sums and corresponding row-id
@@ -224,6 +222,7 @@ struct PartialSum
         cub::ThreadStore<MODIFIER>(&(ptr->partial), partial);
         cub::ThreadStore<MODIFIER>(&(ptr->row), row);
     }
+
 };
 
 /// Reduce-by-row scan operator
@@ -239,6 +238,7 @@ struct ScanOp
                 second.partial :
                 first.partial + second.partial;
         retval.row = second.row;
+
         return retval;
     }
 };
@@ -261,6 +261,43 @@ struct NewRowOp
 // GPU kernels
 //---------------------------------------------------------------------
 
+template <typename Value>
+struct TexVector
+{
+    // Texture reference type
+    typedef texture<Value, cudaTextureType1D, cudaReadModeElementType> TexRef;
+
+    static TexRef ref;
+
+    /**
+     * Bind textures
+     */
+    static void BindTexture(void *d_in, int elements)
+    {
+        cudaChannelFormatDesc tex_desc = cudaCreateChannelDesc<Value>();
+        if (d_in)
+        {
+            size_t offset;
+            size_t bytes = sizeof(Value) * elements;
+            CubDebugExit(cudaBindTexture(&offset, ref, d_in, tex_desc, bytes));
+        }
+    }
+
+    /**
+     * Unbind textures
+     */
+    static void UnbindTexture()
+    {
+        CubDebugExit(cudaUnbindTexture(ref));
+    }
+};
+
+// Texture reference definitions
+template <typename Value>
+typename TexVector<Value>::TexRef TexVector<Value>::ref = 0;
+
+
+
 /**
  * COO SpMV kernel
  */
@@ -269,7 +306,7 @@ template <
     int             ITEMS_PER_THREAD,
     typename        VertexId,
     typename        Value>
-__global__ void Kernel(
+__global__ void CooKernel(
     int                             row_dim,
     int                             col_dim,
     int                             num_vertices,
@@ -316,7 +353,7 @@ __global__ void Kernel(
 
 
     //---------------------------------------------------------------------
-    // Kernel body
+    // CooKernel body
     //---------------------------------------------------------------------
 
     // Declare shared items
@@ -361,7 +398,8 @@ __global__ void Kernel(
     #pragma unroll
     for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
     {
-        partial_sums[ITEM].partial = values[ITEM] * d_vector[columns[ITEM]];
+        Value vec_item = tex1Dfetch(TexVector<Value>::ref, columns[ITEM]);
+        partial_sums[ITEM].partial = values[ITEM] * vec_item;
         partial_sums[ITEM].row = rows[ITEM];
     }
 
@@ -382,8 +420,8 @@ __global__ void Kernel(
 
     // Compute exclusive scan of partial_sums
     VertexId        first_row = d_rows[cta_offset];
-    ScanOp          scan_op;                                // Reduce-by-row scan operator
-    PartialSum      aggregate;                              // CTA-wide aggregate in thread0
+    ScanOp          scan_op;                          // Reduce-by-row scan operator
+    PartialSum      aggregate;                        // CTA-wide aggregate in thread0
     PartialSum      identity = {0.0, first_row};      // Zero-valued identity (with row-id of first item)
 
     CtaScan::ExclusiveScan(
@@ -398,24 +436,27 @@ __global__ void Kernel(
     if (threadIdx.x == 0)
     {
         // Write CTA-wide aggregate to global list
-        ThreadStore<PTX_STORE_CG>(d_cta_aggregates + blockIdx.x, aggregate);
+        ThreadStore<PTX_STORE_CG>(&d_cta_aggregates[blockIdx.x].partial, aggregate.partial);
+        __threadfence_block();
+        ThreadStore<PTX_STORE_CG>(&d_cta_aggregates[blockIdx.x].row, aggregate.row);
 
         // Get aggregate from prior CTA
         PartialSum prev_aggregate;
         if (blockIdx.x == 0)
         {
-            // First CTA has no prior aggregate
+            // First tile has no prior aggregate
             prev_aggregate.row = first_row;
             prev_aggregate.partial = 0.0;
         }
         else
         {
             // Keep loading prior CTA's aggregate until valid
-            do
-            {
-                prev_aggregate = ThreadLoad<PTX_LOAD_CG>(d_cta_aggregates + blockIdx.x - 1);
+            do {
+                prev_aggregate.row = ThreadLoad<PTX_LOAD_CG>(&d_cta_aggregates[blockIdx.x - 1].row);
             }
             while (prev_aggregate.row < 0);
+
+            prev_aggregate.partial = ThreadLoad<PTX_LOAD_CG>(&d_cta_aggregates[blockIdx.x - 1].partial);
         }
 
         // Share prev_aggregate with other threads
@@ -450,17 +491,8 @@ __global__ void Kernel(
     #pragma unroll
     for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
     {
-        if (head_flags[ITEM] && (partial_sums[ITEM].row >= 0))
+        if (head_flags[ITEM])
         {
-            if (threadIdx.x < 8)
-            printf("tid(%d) item(%d) row(%d) flag(%d) partial_sum(%.1f @ row %d)\n",
-                threadIdx.x,
-                ITEM,
-                rows[ITEM],
-                head_flags[ITEM],
-                partial_sums[ITEM].partial,
-                partial_sums[ITEM].row);
-
             d_result[partial_sums[ITEM].row] = partial_sums[ITEM].partial;
         }
     }
@@ -508,13 +540,20 @@ void TestDevice(
     VertexId*                       h_rows          = new VertexId[num_vertices];
     VertexId*                       h_columns       = new VertexId[num_vertices];
     Value*                          h_values        = new Value[num_vertices];
-
     for (int i = 0; i < num_vertices; i++)
     {
         h_rows[i]       = coo_graph.coo_tuples[i].row;
         h_columns[i]    = coo_graph.coo_tuples[i].col;
         h_values[i]     = coo_graph.coo_tuples[i].val;
     }
+
+    // Figure out launch params
+    int grid_size = (num_vertices + TILE_SIZE - 1) / TILE_SIZE;
+    printf("CooKernel<%d, %d><<<%d, %d>>>(...)\n",
+        CTA_THREADS,
+        ITEMS_PER_THREAD,
+        grid_size,
+        CTA_THREADS);
 
     // Allocate COO device arrays
     CachedAllocator *allocator = CubCachedAllocator<void>();
@@ -523,6 +562,7 @@ void TestDevice(
     CubDebugExit(allocator->Allocate((void**)&d_values,     sizeof(Value) * num_vertices));
     CubDebugExit(allocator->Allocate((void**)&d_vector,     sizeof(Value) * coo_graph.col_dim));
     CubDebugExit(allocator->Allocate((void**)&d_result,     sizeof(Value) * coo_graph.row_dim));
+    CubDebugExit(allocator->Allocate((void**)&d_cta_aggregates, sizeof(PartialSum<VertexId, Value>) * grid_size));
 
     // Copy host arrays to device
     CubDebugExit(cudaMemcpy(d_rows,     h_rows,     sizeof(VertexId) * num_vertices, cudaMemcpyHostToDevice));
@@ -530,26 +570,24 @@ void TestDevice(
     CubDebugExit(cudaMemcpy(d_values,   h_values,   sizeof(Value) * num_vertices, cudaMemcpyHostToDevice));
     CubDebugExit(cudaMemcpy(d_vector,   h_vector,   sizeof(Value) * coo_graph.col_dim, cudaMemcpyHostToDevice));
 
-    // Zero-out the output array
-    CubDebugExit(cudaMemset(d_result, 0, sizeof(Value) * coo_graph.row_dim));
-
-    // Figure out launch params and allocate temporaries
-    int grid_size = (num_vertices + TILE_SIZE - 1) / TILE_SIZE;
-    CubDebugExit(allocator->Allocate((void**)&d_cta_aggregates, sizeof(PartialSum<VertexId, Value>) * grid_size));
-    if (g_verbose) printf("Kernel<%d, %d><<<%d, %d>>>(...)\n",
-        CTA_THREADS,
-        ITEMS_PER_THREAD,
-        grid_size,
-        CTA_THREADS);
+    // Bind textures
+    TexVector<Value>::BindTexture(d_vector, coo_graph.col_dim);
 
     // Run kernel
     GpuTimer gpu_timer;
-    float elapsed_millis = 0;
+    float elapsed_millis = 0.0;
     for (int i = 0; i < g_iterations; i++)
     {
         gpu_timer.Start();
 
-        Kernel<CTA_THREADS, ITEMS_PER_THREAD><<<grid_size, CTA_THREADS>>>(
+        // Zero-out the output array
+        CubDebugExit(cudaMemset(d_result, 0, sizeof(Value) * coo_graph.row_dim));
+
+        // Initialize temporaries
+        CubDebugExit(cudaMemset(d_cta_aggregates, -1, sizeof(PartialSum<VertexId, Value>) * grid_size));
+
+        // Run the COO kernel
+        CooKernel<CTA_THREADS, ITEMS_PER_THREAD><<<grid_size, CTA_THREADS>>>(
             coo_graph.row_dim,
             coo_graph.col_dim,
             num_vertices,
@@ -561,7 +599,7 @@ void TestDevice(
             d_result);
 
         gpu_timer.Stop();
-        elapsed_millis = gpu_timer.ElapsedMillis();
+        elapsed_millis += gpu_timer.ElapsedMillis();
 
         // Force any kernel stdio to screen
         CubDebugExit(cudaThreadSynchronize());
@@ -570,7 +608,8 @@ void TestDevice(
     // Display timing
     float avg_elapsed = elapsed_millis / g_iterations;
     int total_bytes = ((sizeof(VertexId) + sizeof(VertexId) + sizeof(Value)) * num_vertices) + (sizeof(Value) * 2 * coo_graph.row_dim);
-    printf("Average elapsed (%.3f ms), utilized bandwidth (%.3f GB/s), GFLOPS(%.3f)\n",
+    printf("%d iterations, average elapsed (%.3f ms), utilized bandwidth (%.3f GB/s), GFLOPS(%.3f)\n",
+        g_iterations,
         avg_elapsed,
         total_bytes / avg_elapsed / 1000.0 / 1000.0,
         num_vertices * 2 / avg_elapsed / 1000.0 / 1000.0);
@@ -579,9 +618,11 @@ void TestDevice(
     AssertEquals(0, CompareDeviceResults(h_reference, d_result, coo_graph.row_dim, g_verbose, g_verbose));
 
     // Cleanup
+    TexVector<Value>::UnbindTexture();
+    CubDebugExit(allocator->Deallocate(d_cta_aggregates));
     CubDebugExit(allocator->Deallocate(d_rows));
     CubDebugExit(allocator->Deallocate(d_columns));
-    CubDebugExit(allocator->Deallocate(d_columns));
+    CubDebugExit(allocator->Deallocate(d_values));
     CubDebugExit(allocator->Deallocate(d_vector));
     CubDebugExit(allocator->Deallocate(d_result));
     delete h_rows;
@@ -621,7 +662,7 @@ void AssignGraphValues(CooGraph &coo_graph)
 {
     for (int i = 0; i < coo_graph.coo_tuples.size(); i++)
     {
-        coo_graph.coo_tuples[i].val = i;
+        coo_graph.coo_tuples[i].val = i % 21;
     }
 }
 
@@ -677,7 +718,10 @@ int main(int argc, char** argv)
     {
         VertexId width;
         args.GetCmdLineArgument("width", width);
+        printf("Generating grid3d width(%d)... ", width); fflush(stdout);
         coo_graph.InitGrid3d(width);
+        printf("Done.  %d non-zeros, %d rows, %d columns\n",
+            coo_graph.coo_tuples.size(), coo_graph.row_dim, coo_graph.col_dim); fflush(stdout);
     }
     else
     {
@@ -712,7 +756,7 @@ int main(int argc, char** argv)
     }
 
     // Run GPU version
-    TestDevice<128, 4>(coo_graph, h_vector, h_reference);
+    TestDevice<128, 5>(coo_graph, h_vector, h_reference);
 
     // Cleanup
     delete h_vector;
