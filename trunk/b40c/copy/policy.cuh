@@ -134,8 +134,8 @@ struct Policy
 	static void Print()
 	{
 		// ProblemType type parameters
-		printf("%d, ", sizeof(T));
-		printf("%d, ", sizeof(SizeT));
+		printf("%ld, ", (long long) sizeof(T));
+		printf("%ld, ", (long long) sizeof(SizeT));
 		printf("%d, ", CUDA_ARCH);
 
 		// Tunable parameters
