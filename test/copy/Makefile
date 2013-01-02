@@ -35,6 +35,7 @@ OSUPPER = $(shell uname -s 2>/dev/null | tr [:lower:] [:upper:])
 # Gen targets
 #-------------------------------------------------------------------------------
 
+GEN_SM35 = -gencode=arch=compute_35,code=\"sm_35,compute_35\" 
 GEN_SM30 = -gencode=arch=compute_30,code=\"sm_30,compute_30\" 
 GEN_SM20 = -gencode=arch=compute_20,code=\"sm_20,compute_20\" 
 GEN_SM13 = -gencode=arch=compute_13,code=\"sm_13,compute_13\" 
@@ -53,6 +54,9 @@ else
 	TUNE_ARCH = 200
 endif
 
+ifeq ($(TUNE_ARCH), 350) 
+	TUNE_SM_TARGETS = $(GEN_SM35)
+endif
 ifeq ($(TUNE_ARCH), 300) 
 	TUNE_SM_TARGETS = $(GEN_SM30)
 endif
