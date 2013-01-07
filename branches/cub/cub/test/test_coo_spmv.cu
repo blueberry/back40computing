@@ -40,8 +40,9 @@ using namespace std;
 // Globals, constants and typedefs
 //---------------------------------------------------------------------
 
-bool g_verbose = false;
-int g_iterations = 1;
+bool    g_verbose       = false;
+int     g_iterations    = 1;
+int     g_grid_size     = -1;
 
 
 //---------------------------------------------------------------------
@@ -124,6 +125,35 @@ struct CooGraph
 
 
     /**
+     * Builds a wheel COO sparse graph having spokes spokes.
+     */
+    void InitWheel(VertexId spokes)
+    {
+        VertexId edges  = spokes + (spokes - 1);
+
+        coo_tuples.clear();
+        coo_tuples.reserve(edges);
+
+        // Add spoke edges
+        for (VertexId i = 0; i < spokes; i++)
+        {
+            coo_tuples.push_back(CooTuple(0, i + 1));
+        }
+
+        // Add rim
+        for (VertexId i = 0; i < spokes; i++)
+        {
+            VertexId dest = (i + 1) % spokes;
+            coo_tuples.push_back(CooTuple(i + 1, dest + 1));
+        }
+
+        // Sort by rows, then columns, update dims
+        std::stable_sort(coo_tuples.begin(), coo_tuples.end(), CooTupleCompare);
+        UpdateDims();
+    }
+
+
+    /**
      * Builds a square 3D grid COO sparse graph.  Interior nodes have degree 7 (including
      * a self-loop).  Values are unintialized, coo_tuples are sorted.
      */
@@ -195,6 +225,7 @@ struct CooGraph
 // CooKernel types and constants
 //---------------------------------------------------------------------
 
+
 /// Pairing of dot product partial sums and corresponding row-id
 template <typename VertexId, typename Value>
 struct PartialSum
@@ -224,6 +255,17 @@ struct PartialSum
     }
 
 };
+
+
+/// Scan progress
+template <typename VertexId, typename Value>
+struct ScanProgress
+{
+    int                             edge;
+    PartialSum<VertexId, Value>     aggregate;
+};
+
+
 
 /// Reduce-by-row scan operator
 struct ScanOp
@@ -299,23 +341,14 @@ typename TexVector<Value>::TexRef TexVector<Value>::ref = 0;
 
 
 /**
- * COO SpMV kernel
+ * CTA abstraction for processing sparse SPMV tiles
  */
 template <
     int             CTA_THREADS,
     int             ITEMS_PER_THREAD,
     typename        VertexId,
     typename        Value>
-__global__ void CooKernel(
-    int                             row_dim,
-    int                             col_dim,
-    int                             num_vertices,
-    PartialSum<VertexId, Value>*    d_cta_aggregates,   // Temporary storage for communicating dot product partials between CTAs
-    VertexId*                       d_rows,
-    VertexId*                       d_columns,
-    Value*                          d_values,
-    Value*                          d_vector,
-    Value*                          d_result)
+struct SpmvCta
 {
     //---------------------------------------------------------------------
     // Types and constants
@@ -353,154 +386,236 @@ __global__ void CooKernel(
 
 
     //---------------------------------------------------------------------
-    // CooKernel body
+    // Operations
     //---------------------------------------------------------------------
 
-    // Declare shared items
-    __shared__ SmemStorage  s_storage;       // Shared storage needed for CUB primitives
-
-    VertexId    columns[ITEMS_PER_THREAD];
-    VertexId    rows[ITEMS_PER_THREAD];
-    Value       values[ITEMS_PER_THREAD];
-    PartialSum  partial_sums[ITEMS_PER_THREAD];
-    HeadFlag    head_flags[ITEMS_PER_THREAD];
-
-    // Figure out this CTA's tile of graph input
-    int         cta_offset      = blockIdx.x * TILE_ITEMS;              // The CTA's offset in d_columns and d_values
-    int         guarded_items   = (blockIdx.x == gridDim.x - 1) ?       // The number of guarded items in the last tile
-                                        num_vertices % TILE_ITEMS :
-                                        0;
-
-    // Load a CTA-striped tile of A (sparse row-ids, column-ids, and values)
-    if (guarded_items)
+    __device__ __forceinline__
+    static void ProcessTile(
+        SmemStorage                     &s_storage,
+        ScanProgress<VertexId, Value>*  d_scan_progress,
+        VertexId*                       d_rows,
+        VertexId*                       d_columns,
+        Value*                          d_values,
+        Value*                          d_vector,
+        Value*                          d_result,
+        int                             num_edges,
+        int                             cta_offset,
+        int                             guarded_items = 0)
     {
-        // Last tile has guarded loads.  Extend the coordinates of the last
-        // vertex for out-of-bound items, but zero-valued
-        VertexId last_row = d_rows[num_vertices - 1];
-        VertexId last_column = d_columns[num_vertices - 1];
+        VertexId    columns[ITEMS_PER_THREAD];
+        VertexId    rows[ITEMS_PER_THREAD];
+        Value       values[ITEMS_PER_THREAD];
+        PartialSum  partial_sums[ITEMS_PER_THREAD];
+        HeadFlag    head_flags[ITEMS_PER_THREAD];
 
-        CtaLoadDirectStriped(rows, d_rows, cta_offset, guarded_items, last_row);
-        CtaLoadDirectStriped(columns, d_columns, cta_offset, guarded_items, last_column);
-        CtaLoadDirectStriped(values, d_values, cta_offset, guarded_items, Value(0.0));
-    }
-    else
-    {
-        // Unguarded loads
-        CtaLoadDirectStriped(rows, d_rows, cta_offset);
-        CtaLoadDirectStriped(columns, d_columns, cta_offset);
-        CtaLoadDirectStriped(values, d_values, cta_offset);
-    }
-
-    // Fence to prevent hoisting any dependent code below into the loads above
-    __threadfence_block();
-
-    // Load the referenced values from x and compute dot product partial_sums
-    #pragma unroll
-    for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
-    {
-        Value vec_item = tex1Dfetch(TexVector<Value>::ref, columns[ITEM]);
-        partial_sums[ITEM].partial = values[ITEM] * vec_item;
-        partial_sums[ITEM].row = rows[ITEM];
-    }
-
-    // Transpose from CTA-striped to CTA-blocked arrangement
-    CtaExchange::StripedToBlocked(s_storage.exchange, partial_sums);
-
-    // Barrier for smem reuse
-    __syncthreads();
-
-    // Save a copy of the original rows.  We will use them to compute the row head flags
-    // later.  (After the exclusive scan, the row fields in partial_sums will
-    // be shifted by one element.)
-    #pragma unroll
-    for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
-    {
-        rows[ITEM] = partial_sums[ITEM].row;
-    }
-
-    // Compute exclusive scan of partial_sums
-    VertexId        first_row = d_rows[cta_offset];
-    ScanOp          scan_op;                          // Reduce-by-row scan operator
-    PartialSum      aggregate;                        // CTA-wide aggregate in thread0
-    PartialSum      identity = {0.0, first_row};      // Zero-valued identity (with row-id of first item)
-
-    CtaScan::ExclusiveScan(
-        s_storage.scan,
-        partial_sums,
-        partial_sums,           // Out
-        identity,
-        scan_op,
-        aggregate);             // Out
-
-    // Thread0 communicates the CTA-wide aggregate with other CTAs
-    if (threadIdx.x == 0)
-    {
-        // Write CTA-wide aggregate to global list
-        ThreadStore<PTX_STORE_CG>(&d_cta_aggregates[blockIdx.x].partial, aggregate.partial);
-        __threadfence_block();
-        ThreadStore<PTX_STORE_CG>(&d_cta_aggregates[blockIdx.x].row, aggregate.row);
-
-        // Get aggregate from prior CTA
-        PartialSum prev_aggregate;
-        if (blockIdx.x == 0)
+        // Load a CTA-striped tile of A (sparse row-ids, column-ids, and values)
+        if (guarded_items)
         {
-            // First tile has no prior aggregate
-            prev_aggregate.row = first_row;
-            prev_aggregate.partial = 0.0;
+            // Last tile has guarded loads.  Extend the coordinates of the last
+            // vertex for out-of-bound items, but zero-valued
+            VertexId last_row = d_rows[num_edges - 1];
+            VertexId last_column = d_columns[num_edges - 1];
+
+            CtaLoadDirectStriped(rows, d_rows, cta_offset, guarded_items, last_row);
+            CtaLoadDirectStriped(columns, d_columns, cta_offset, guarded_items, last_column);
+            CtaLoadDirectStriped(values, d_values, cta_offset, guarded_items, Value(0.0));
         }
         else
         {
-            // Keep loading prior CTA's aggregate until valid
-            do {
-                prev_aggregate.row = ThreadLoad<PTX_LOAD_CG>(&d_cta_aggregates[blockIdx.x - 1].row);
-            }
-            while (prev_aggregate.row < 0);
-
-            prev_aggregate.partial = ThreadLoad<PTX_LOAD_CG>(&d_cta_aggregates[blockIdx.x - 1].partial);
+            // Unguarded loads
+            CtaLoadDirectStriped(rows, d_rows, cta_offset);
+            CtaLoadDirectStriped(columns, d_columns, cta_offset);
+            CtaLoadDirectStriped(values, d_values, cta_offset);
         }
 
-        // Share prev_aggregate with other threads
-        s_storage.prev_aggregate = prev_aggregate;
-    }
+        // Fence to prevent hoisting any dependent code below into the loads above
+        __threadfence_block();
 
-    // Barrier for smem reuse and coherence
-    __syncthreads();
-
-    // Incorporate previous CTA's aggregate into partial_sums
-    #pragma unroll
-    for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
-    {
-        partial_sums[ITEM] = scan_op(s_storage.prev_aggregate, partial_sums[ITEM]);
-    }
-
-    // Flag row heads using saved row ids
-    CtaDiscontinuity::Flag(
-        s_storage.discontinuity,
-        rows,                           // Original row ids
-        s_storage.prev_aggregate.row,   // Last row id from previous CTA
-        NewRowOp(),
-        head_flags);                    // (out) Head flags
-
-    // First item of first thread should be the previous CTA's aggregate (and not identity)
-    if (threadIdx.x == 0)
-    {
-        partial_sums[0] = s_storage.prev_aggregate;
-    }
-
-    // Scatter dot products if a row head of a valid row
-    #pragma unroll
-    for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
-    {
-        if (head_flags[ITEM])
+        // Load the referenced values from x and compute dot product partial_sums
+        #pragma unroll
+        for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
         {
-            d_result[partial_sums[ITEM].row] = partial_sums[ITEM].partial;
+            Value vec_item = tex1Dfetch(TexVector<Value>::ref, columns[ITEM]);
+            partial_sums[ITEM].partial = values[ITEM] * vec_item;
+            partial_sums[ITEM].row = rows[ITEM];
+        }
+
+        // Transpose from CTA-striped to CTA-blocked arrangement
+        CtaExchange::StripedToBlocked(s_storage.exchange, partial_sums);
+
+        // Barrier for smem reuse
+        __syncthreads();
+
+        // Save a copy of the original rows.  We will use them to compute the row head flags
+        // later.  (After the exclusive scan, the row fields in partial_sums will
+        // be shifted by one element.)
+        #pragma unroll
+        for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
+        {
+            rows[ITEM] = partial_sums[ITEM].row;
+        }
+
+        // Compute exclusive scan of partial_sums
+        VertexId        first_row = d_rows[cta_offset];
+        ScanOp          scan_op;                          // Reduce-by-row scan operator
+        PartialSum      aggregate;                        // CTA-wide aggregate in thread0
+        PartialSum      identity = {0.0, first_row};      // Zero-valued identity (with row-id of first item)
+
+        CtaScan::ExclusiveScan(
+            s_storage.scan,
+            partial_sums,
+            partial_sums,           // Out
+            identity,
+            scan_op,
+            aggregate);             // Out
+
+        // Thread0 communicates the CTA-wide aggregate with other CTAs
+        if (threadIdx.x == 0)
+        {
+            // Get aggregate from prior CTA
+            PartialSum prev_aggregate;
+            if (blockIdx.x == 0)
+            {
+                // First tile has no prior aggregate
+                prev_aggregate.row = first_row;
+                prev_aggregate.partial = 0.0;
+            }
+            else
+            {
+                // Keep loading prior CTA's aggregate until valid
+                int edge;
+                do {
+                    edge = ThreadLoad<PTX_LOAD_CG>(&d_scan_progress->edge);
+                }
+                while (edge != cta_offset);
+
+                prev_aggregate = ThreadLoad<PTX_LOAD_CG>(&d_scan_progress->aggregate);
+            }
+
+            // Share prev_aggregate with other threads
+            s_storage.prev_aggregate = prev_aggregate;
+
+            // Apply prev_aggregate to our local aggregate
+            aggregate = scan_op(prev_aggregate, aggregate);
+
+            // Write updated CTA-wide aggregate
+            ThreadStore<PTX_STORE_CG>(&d_scan_progress->aggregate, aggregate);
+
+            // Signal to subsequent CTA that value is ready
+            __threadfence_block();
+            ThreadStore<PTX_STORE_CG>(&d_scan_progress->edge, cta_offset + TILE_ITEMS);
+        }
+
+        // Barrier for smem reuse and coherence
+        __syncthreads();
+
+        // Incorporate previous CTA's aggregate into partial_sums
+        #pragma unroll
+        for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
+        {
+            partial_sums[ITEM] = scan_op(s_storage.prev_aggregate, partial_sums[ITEM]);
+        }
+
+        // Flag row heads using saved row ids
+        CtaDiscontinuity::Flag(
+            s_storage.discontinuity,
+            rows,                           // Original row ids
+            s_storage.prev_aggregate.row,   // Last row id from previous CTA
+            NewRowOp(),
+            head_flags);                    // (out) Head flags
+
+        // First item of first thread should be the previous CTA's aggregate (and not identity)
+        if (threadIdx.x == 0)
+        {
+            partial_sums[0] = s_storage.prev_aggregate;
+        }
+
+        // Scatter dot products if a row head of a valid row
+        #pragma unroll
+        for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
+        {
+            if (head_flags[ITEM])
+            {
+                d_result[partial_sums[ITEM].row] = partial_sums[ITEM].partial;
+            }
+        }
+
+        // Last tile scatters the final value (if it has a valid row id), which is the aggregate
+        if ((blockIdx.x == gridDim.x - 1) && (threadIdx.x == 0) && (aggregate.row >= 0))
+        {
+            d_result[aggregate.row] = aggregate.partial;
         }
     }
 
-    // Last tile scatters the final value (if it has a valid row id), which is the aggregate
-    if ((blockIdx.x == gridDim.x - 1) && (threadIdx.x == 0) && (aggregate.row > 0))
+};
+
+
+/**
+ * COO SpMV kernel
+ */
+template <
+    int             CTA_THREADS,
+    int             ITEMS_PER_THREAD,
+    typename        VertexId,
+    typename        Value>
+__global__ void CooKernel(
+    CtaProgress<int>                cta_progress,
+    ScanProgress<VertexId, Value>*  d_scan_progress,
+    VertexId*                       d_rows,
+    VertexId*                       d_columns,
+    Value*                          d_values,
+    Value*                          d_vector,
+    Value*                          d_result)
+{
+    const int TILE_SIZE = CTA_THREADS * ITEMS_PER_THREAD;
+
+    // CTA type
+    typedef SpmvCta<CTA_THREADS, ITEMS_PER_THREAD, VertexId, Value> SpmvCta;
+
+    // Shared memory
+    __shared__ typename SpmvCta::SmemStorage s_storage;
+
+    // Process full tiles of sparse matrix
+    cta_progress.Init();
+
+    int cta_offset;
+    while (cta_progress.NextFull(TILE_SIZE, cta_offset))
     {
-        d_result[aggregate.row] = aggregate.partial;
+        if (threadIdx.x == 0) printf("block(%d) cta_offset(%d)\n",
+            blockIdx.x, cta_offset);
+
+        SpmvCta::ProcessTile(
+            s_storage,
+            d_scan_progress,
+            d_rows,
+            d_columns,
+            d_values,
+            d_vector,
+            d_result,
+            cta_progress.TotalItems(),
+            cta_offset);
+
+        // Barrier for smem reuse and coherence
+        __syncthreads();
+    }
+
+    // Process last partial tile (if any)
+    if (cta_progress.NextPartial(cta_offset))
+    {
+        if (threadIdx.x == 0) printf("block(%d) cta_offset(%d) guarded_items(%d)\n",
+            blockIdx.x, cta_offset, cta_progress.GuardedItems());
+
+        SpmvCta::ProcessTile(
+            s_storage,
+            d_scan_progress,
+            d_rows,
+            d_columns,
+            d_values,
+            d_vector,
+            d_result,
+            cta_progress.TotalItems(),
+            cta_offset,
+            cta_progress.GuardedItems());
     }
 }
 
@@ -536,38 +651,53 @@ void TestDevice(
     PartialSum<VertexId, Value>*    d_cta_aggregates;   // Temporary storage for communicating dot product partials between CTAs
 
     // Create SOA version of coo_graph on host
-    int                             num_vertices    = coo_graph.coo_tuples.size();
-    VertexId*                       h_rows          = new VertexId[num_vertices];
-    VertexId*                       h_columns       = new VertexId[num_vertices];
-    Value*                          h_values        = new Value[num_vertices];
-    for (int i = 0; i < num_vertices; i++)
+    int                             num_edges       = coo_graph.coo_tuples.size();
+    VertexId*                       h_rows          = new VertexId[num_edges];
+    VertexId*                       h_columns       = new VertexId[num_edges];
+    Value*                          h_values        = new Value[num_edges];
+    for (int i = 0; i < num_edges; i++)
     {
         h_rows[i]       = coo_graph.coo_tuples[i].row;
         h_columns[i]    = coo_graph.coo_tuples[i].col;
         h_values[i]     = coo_graph.coo_tuples[i].val;
     }
 
-    // Figure out launch params
-    int grid_size = (num_vertices + TILE_SIZE - 1) / TILE_SIZE;
+    // Determine launch params
+    CudaProps cuda_props;
+    KernelProps kernel_props;
+    CubDebugExit(cuda_props.Init());
+    CubDebugExit(kernel_props.Init(
+        CooKernel<CTA_THREADS, ITEMS_PER_THREAD, VertexId, Value>,
+        CTA_THREADS,
+        cuda_props));
+
+    g_grid_size = kernel_props.OversubscribedGridSize(TILE_SIZE, num_edges, g_grid_size);
+
+    // Utility for tracking CTA progress
+    CtaProgress<int> cta_progress(num_edges, g_grid_size, TILE_SIZE);
+
+    // Print debug info
     printf("CooKernel<%d, %d><<<%d, %d>>>(...)\n",
         CTA_THREADS,
         ITEMS_PER_THREAD,
-        grid_size,
+        g_grid_size,
         CTA_THREADS);
+    printf("Max SM occupancy: %d\n", kernel_props.max_cta_occupancy);
+    cta_progress.Print();
 
     // Allocate COO device arrays
     CachedAllocator *allocator = CubCachedAllocator<void>();
-    CubDebugExit(allocator->Allocate((void**)&d_rows,       sizeof(VertexId) * num_vertices));
-    CubDebugExit(allocator->Allocate((void**)&d_columns,    sizeof(VertexId) * num_vertices));
-    CubDebugExit(allocator->Allocate((void**)&d_values,     sizeof(Value) * num_vertices));
+    CubDebugExit(allocator->Allocate((void**)&d_rows,       sizeof(VertexId) * num_edges));
+    CubDebugExit(allocator->Allocate((void**)&d_columns,    sizeof(VertexId) * num_edges));
+    CubDebugExit(allocator->Allocate((void**)&d_values,     sizeof(Value) * num_edges));
     CubDebugExit(allocator->Allocate((void**)&d_vector,     sizeof(Value) * coo_graph.col_dim));
     CubDebugExit(allocator->Allocate((void**)&d_result,     sizeof(Value) * coo_graph.row_dim));
-    CubDebugExit(allocator->Allocate((void**)&d_cta_aggregates, sizeof(PartialSum<VertexId, Value>) * grid_size));
+    CubDebugExit(allocator->Allocate((void**)&d_scan_progress, sizeof(ScanProgress<VertexId, Value>)));
 
     // Copy host arrays to device
-    CubDebugExit(cudaMemcpy(d_rows,     h_rows,     sizeof(VertexId) * num_vertices, cudaMemcpyHostToDevice));
-    CubDebugExit(cudaMemcpy(d_columns,  h_columns,  sizeof(VertexId) * num_vertices, cudaMemcpyHostToDevice));
-    CubDebugExit(cudaMemcpy(d_values,   h_values,   sizeof(Value) * num_vertices, cudaMemcpyHostToDevice));
+    CubDebugExit(cudaMemcpy(d_rows,     h_rows,     sizeof(VertexId) * num_edges, cudaMemcpyHostToDevice));
+    CubDebugExit(cudaMemcpy(d_columns,  h_columns,  sizeof(VertexId) * num_edges, cudaMemcpyHostToDevice));
+    CubDebugExit(cudaMemcpy(d_values,   h_values,   sizeof(Value) * num_edges, cudaMemcpyHostToDevice));
     CubDebugExit(cudaMemcpy(d_vector,   h_vector,   sizeof(Value) * coo_graph.col_dim, cudaMemcpyHostToDevice));
 
     // Bind textures
@@ -584,14 +714,12 @@ void TestDevice(
         CubDebugExit(cudaMemset(d_result, 0, sizeof(Value) * coo_graph.row_dim));
 
         // Initialize temporaries
-        CubDebugExit(cudaMemset(d_cta_aggregates, -1, sizeof(PartialSum<VertexId, Value>) * grid_size));
+        CubDebugExit(cudaMemset(d_scan_progress, 0, sizeof(ScanProgress<VertexId, Value>)));
 
         // Run the COO kernel
-        CooKernel<CTA_THREADS, ITEMS_PER_THREAD><<<grid_size, CTA_THREADS>>>(
-            coo_graph.row_dim,
-            coo_graph.col_dim,
-            num_vertices,
-            d_cta_aggregates,
+        CooKernel<CTA_THREADS, ITEMS_PER_THREAD><<<g_grid_size, CTA_THREADS>>>(
+            cta_progress,
+            d_scan_progress,
             d_rows,
             d_columns,
             d_values,
@@ -607,19 +735,19 @@ void TestDevice(
 
     // Display timing
     float avg_elapsed = elapsed_millis / g_iterations;
-    int total_bytes = ((sizeof(VertexId) + sizeof(VertexId) + sizeof(Value)) * num_vertices) + (sizeof(Value) * 2 * coo_graph.row_dim);
+    int total_bytes = ((sizeof(VertexId) + sizeof(VertexId) + sizeof(Value)) * num_edges) + (sizeof(Value) * 2 * coo_graph.row_dim);
     printf("%d iterations, average elapsed (%.3f ms), utilized bandwidth (%.3f GB/s), GFLOPS(%.3f)\n",
         g_iterations,
         avg_elapsed,
         total_bytes / avg_elapsed / 1000.0 / 1000.0,
-        num_vertices * 2 / avg_elapsed / 1000.0 / 1000.0);
+        num_edges * 2 / avg_elapsed / 1000.0 / 1000.0);
 
     // Check results
     AssertEquals(0, CompareDeviceResults(h_reference, d_result, coo_graph.row_dim, g_verbose, g_verbose));
 
     // Cleanup
     TexVector<Value>::UnbindTexture();
-    CubDebugExit(allocator->Deallocate(d_cta_aggregates));
+    CubDebugExit(allocator->Deallocate(d_scan_progress));
     CubDebugExit(allocator->Deallocate(d_rows));
     CubDebugExit(allocator->Deallocate(d_columns));
     CubDebugExit(allocator->Deallocate(d_values));
@@ -693,11 +821,13 @@ int main(int argc, char** argv)
     CommandLineArgs args(argc, argv);
     g_verbose = args.CheckCmdLineFlag("v");
     args.GetCmdLineArgument("i", g_iterations);
+    args.GetCmdLineArgument("grid-size", g_grid_size);
 
     // Print usage
     if (args.CheckCmdLineFlag("help"))
     {
-        printf("%s\n [--device=<device-id>] [--v] [--iterations=<test iterations>]\n"
+        printf("%s\n [--device=<device-id>] [--v] [--iterations=<test iterations>] [--grid-size=<grid-size>]\n"
+            "\t--type=wheel --spokes=<spokes>\n"
             "\t--type=grid2d --width=<width>\n"
             "\t--type=grid3d --width=<width>\n"
             "\t--type=metis --file=<file>\n"
@@ -720,6 +850,15 @@ int main(int argc, char** argv)
         args.GetCmdLineArgument("width", width);
         printf("Generating grid3d width(%d)... ", width); fflush(stdout);
         coo_graph.InitGrid3d(width);
+        printf("Done.  %d non-zeros, %d rows, %d columns\n",
+            coo_graph.coo_tuples.size(), coo_graph.row_dim, coo_graph.col_dim); fflush(stdout);
+    }
+    else if (type == string("wheel"))
+    {
+        VertexId spokes;
+        args.GetCmdLineArgument("spokes", spokes);
+        printf("Generating wheel spokes(%d)... ", spokes); fflush(stdout);
+        coo_graph.InitWheel(spokes);
         printf("Done.  %d non-zeros, %d rows, %d columns\n",
             coo_graph.coo_tuples.size(), coo_graph.row_dim, coo_graph.col_dim); fflush(stdout);
     }

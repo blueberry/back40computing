@@ -116,6 +116,15 @@ struct KernelProps
 
 
 	/**
+	 *
+	 */
+	int ResidentGridSize()
+	{
+	    return max_cta_occupancy * sm_count;
+	}
+
+
+	/**
 	 * Returns the number of threadblocks to launch for the given problem size.
 	 * May over/under subscribe the current device based upon heuristics.  Does not
 	 * the optional max_grid_size limit.
@@ -125,7 +134,7 @@ struct KernelProps
 	int OversubscribedGridSize(
 		int schedule_granularity,
 		int num_elements,
-		int max_grid_size = 0)
+		int max_grid_size = -1)
 	{
 		int grid_size;
 		int grains = (num_elements + schedule_granularity - 1) / schedule_granularity;

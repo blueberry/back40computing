@@ -39,132 +39,187 @@ namespace cub {
 /**
  * Description of work distribution amongst CTAs
  */
-template <typename SizeT>
-struct CtaWorkDistribution
-{
-	int total_grains;
-	int excess;
-
-	int big_blocks;
-	int last_block;
-
-	SizeT unguarded_elements;
-	SizeT big_share;
-	SizeT normal_share;
-	SizeT normal_base_offset;
-	SizeT num_elements;
-
-
-	/**
-	 * Constructor
-	 */
-	__host__ __device__ __forceinline__ CtaWorkDistribution(
-		SizeT 	num_elements,
-		int 	grid_size,
-		int 	schedule_granularity)
-	{
-		this->num_elements		= num_elements;
-		total_grains 			= (num_elements + schedule_granularity - 1) / schedule_granularity;
-		excess 					= (total_grains * schedule_granularity) - num_elements;
-
-		int grains_per_cta 		= total_grains / grid_size;
-		big_blocks	 			= total_grains - (grains_per_cta * grid_size);		// leftover grains go to big blocks
-
-		normal_share 			= grains_per_cta * schedule_granularity;
-		normal_base_offset 		= big_blocks * schedule_granularity;
-		big_share 				= normal_share + schedule_granularity;
-
-		last_block 				= CUB_MIN(total_grains, grid_size) - 1;
-	}
-
-	/**
-	 * Print to stdout
-	 */
-	void Print()
-	{
-		printf(
-			"total_grains: %lu, "
-			"big_blocks: %lu, "
-			"unguarded_elements: %lu, "
-			"big_share: %lu, "
-			"normal_share: %lu, "
-			"normal_base_offset: %lu, "
-			"last_block: %lu, "
-			"excess: %lu \n",
-				(unsigned long) total_grains,
-				(unsigned long) big_blocks,
-				(unsigned long) unguarded_elements,
-				(unsigned long) big_share,
-				(unsigned long) normal_share,
-				(unsigned long) normal_base_offset,
-				(unsigned long) last_block,
-				(unsigned long) excess);
-	}
-};
-
-
-
-/**
- *
- */
 template <
-	typename 	SizeT,
-	int 		TILE_ELEMENTS,
-	bool 		WORK_STEALING = false>
-struct CtaProgress
+    typename SizeT,
+    bool WORK_STEALING = false>
+class CtaProgress
 {
-	// Even share parameters
-	SizeT 	cta_offset;
-	SizeT 	num_elements;
+private:
 
-	/**
-	 * Initializer
-	 */
-	__device__ __forceinline__ void Init(
-		const CtaWorkDistribution<SizeT> &distribution)
-	{
+    SizeT   total_items;
+    SizeT   total_grains;
+    int     grid_size;
+    int     big_ctas;
+    SizeT   big_share;
+    SizeT   normal_share;
+    SizeT   normal_base_offset;
 
-		if (WORK_STEALING)
-		{
-			// This CTA gets at least one tile (if possible)
-			// TODO
-		}
-		else if (blockIdx.x < distribution.big_blocks)
-		{
-			// This CTA gets a big share of grains (grains_per_cta + 1)
-			cta_offset = (blockIdx.x * distribution.big_share);
-			num_elements = distribution.big_share;
-		}
-		else if (blockIdx.x < distribution.total_grains)
-		{
-			// This CTA gets a normal share of grains (grains_per_cta)
-			cta_offset = distribution.normal_base_offset + (blockIdx.x * distribution.normal_share);
-			num_elements = distribution.normal_share;
-		}
-		else
-		{
-			// This CTA gets no work
-			cta_offset = 0;
-			num_elements = 0;
-		}
+    // CTA-specific fields
+    SizeT   cta_offset;
+    SizeT   cta_oob;
 
-		if (blockIdx.x == distribution.last_block)
-		{
-			num_elements -= distribution.excess;
-		}
-	}
+public:
+
+    /**
+     * Constructor.
+     *
+     * Generally constructed in host code one time.
+     */
+    __host__ __device__ __forceinline__ CtaProgress(
+        SizeT   total_items,
+        int     grid_size,
+        int     schedule_granularity) :
+            // initializers
+            total_items(total_items),
+            grid_size(grid_size),
+            cta_offset(0),
+            cta_oob(0)
+    {
+        total_grains            = (total_items + schedule_granularity - 1) / schedule_granularity;
+        SizeT grains_per_cta    = total_grains / grid_size;
+        big_ctas                = total_grains - (grains_per_cta * grid_size);        // leftover grains go to big blocks
+        normal_share            = grains_per_cta * schedule_granularity;
+        normal_base_offset      = big_ctas * schedule_granularity;
+        big_share               = normal_share + schedule_granularity;
+    }
 
 
-	/**
-	 * Initializer
-	 */
-	__device__ __forceinline__ void Init(SizeT num_elements)
-	{
-		cta_offset = 0;
-		this->num_elements = num_elements;
-	}
+    /**
+     * Initializer.
+     *
+     * Generally initialized by each CTA after construction on the host.
+     */
+    __device__ __forceinline__ void Init()
+    {
+        if (WORK_STEALING)
+        {
+            // TODO
+        }
+        else
+        {
+            if (blockIdx.x < big_ctas)
+            {
+                // This CTA gets a big share of grains (grains_per_cta + 1)
+                cta_offset = (blockIdx.x * big_share);
+                cta_oob = cta_offset + big_share;
+            }
+            else if (blockIdx.x < total_grains)
+            {
+                // This CTA gets a normal share of grains (grains_per_cta)
+                cta_offset = normal_base_offset + (blockIdx.x * normal_share);
+                cta_oob = cta_offset + normal_share;
+            }
 
+            // Last CTA
+            if (blockIdx.x == grid_size - 1)
+            {
+                cta_oob = total_items;
+            }
+        }
+    }
+
+
+    /**
+     *
+     */
+    __device__ __forceinline__ SizeT TotalItems()
+    {
+        return total_items;
+    }
+
+
+    /**
+     *
+     */
+    __device__ __forceinline__ SizeT GuardedItems()
+    {
+        if (!WORK_STEALING)
+        {
+            return cta_oob - cta_offset;
+        }
+        else
+        {
+            // TODO
+            return 0;
+        }
+    }
+
+
+    /**
+     *
+     */
+    __device__ __forceinline__ bool NextFull(
+        int tile_size,
+        SizeT &cta_offset)
+    {
+        if (!WORK_STEALING)
+        {
+            if (this->cta_offset + tile_size <= cta_oob)
+            {
+                cta_offset = this->cta_offset;
+                this->cta_offset += tile_size;
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+        else
+        {
+            // TODO
+            return false;
+        }
+    }
+
+
+    /**
+     *
+     */
+    __device__ __forceinline__ bool NextPartial(
+        SizeT &cta_offset)
+    {
+        if (!WORK_STEALING)
+        {
+            cta_offset = this->cta_offset;
+            return (cta_offset < cta_oob);
+        }
+        else
+        {
+            // TODO
+            return false;
+        }
+    }
+
+
+    /**
+     * Print to stdout
+     */
+    __host__ __device__ __forceinline__ void Print()
+    {
+        printf(
+#ifdef __CUDA_ARCH__
+            "\tCTA(%d) "
+            "cta_offset(%lu) "
+            "cta_oob(%lu) "
+#endif
+            "total_items(%lu)  "
+            "big_ctas(%lu)  "
+            "big_share(%lu)  "
+            "normal_share(%lu)\n",
+#ifdef __CUDA_ARCH__
+                blockIdx.x,
+                (unsigned long) cta_offset,
+                (unsigned long) cta_oob,
+#endif
+                (unsigned long) total_items,
+                (unsigned long) big_ctas,
+                (unsigned long) big_share,
+                (unsigned long) normal_share);
+    }
 };
+
+
 
 
 } // namespace cub
