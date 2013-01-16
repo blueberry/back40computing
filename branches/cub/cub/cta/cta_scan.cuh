@@ -87,7 +87,7 @@ enum CtaScanPolicy
  *        fences to prevent reference reordering of non-primitive types.
  *      - \p CTA_THREADS is a multiple of the architecture's warp size
  * - To minimize synchronization overhead for operations involving the cumulative
- *   \p aggregate and \p cta_seed_prefix, these values are only valid in <em>thread</em><sub>0</sub>.
+ *   \p aggregate and \p external_prefix, these values are only valid in <em>thread</em><sub>0</sub>.
  *
  * <b>Algorithm</b>
  * \par
@@ -135,7 +135,7 @@ enum CtaScanPolicy
  *      \endcode
  *
  * \par
- * - <b>Example 2:</b> Use of local prefix sum and global atomic-add for cooperative allocation within a global data structure
+ * - <b>Example 2:</b> Use of local prefix sum and global atomic-add for performing cooperative allocation within a global data structure
  *      \code
  *      #include <cub.cuh>
  *
@@ -144,12 +144,14 @@ enum CtaScanPolicy
  *      {
  *          int *d_global_counter;
  *
+ *          /// Functor constructor
  *          CtaPrefix(int *d_global_counter) : d_global_counter(d_global_counter) {}
  *
- *          /// Thread-0 produces a value for seeding the CTA-wide scan given the local aggregate
- *          int operator(int local_aggregate)
+ *          /// Functor operator.  Produces a value for seeding the CTA-wide scan given
+ *          /// the local aggregate (called only by thread-0).
+ *          int operator(int local_local_aggregate)
  *          {
- *              return atomicAdd(d_global_counter, local_aggregate);
+ *              return atomicAdd(d_global_counter, local_local_aggregate);
  *          }
  *      }
  *
@@ -170,7 +172,7 @@ enum CtaScanPolicy
  *
  *          // Compute the CTA-wide exclusive prefix sum, seeded with a CTA-wide prefix
  *          int aggregate;
- *          CtaScan::ExclusiveSum(smem_storage, data, data, aggregate, CtaPrefix(d_global_counter));
+ *          CtaScan::ExclusiveSum(smem_storage, data, data, local_aggregate, CtaPrefix(d_global_counter));
  *      \endcode
  */
 template <
@@ -231,7 +233,7 @@ public:
 
 
     /**
-     * \brief Computes an exclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes one input element.  Also computes the CTA-wide \p aggregate of all inputs for <em>thread</em><sub>0</sub>.
+     * \brief Computes an exclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes one input element.  The inclusive CTA-wide \p aggregate of all inputs is computed for <em>thread</em><sub>0</sub>.
      *
      * The \p aggregate is undefined in threads other than <em>thread</em><sub>0</sub>.
      *
@@ -242,11 +244,11 @@ public:
     template <typename ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
         SmemStorage     &smem_storage,      ///< [in] Shared reference to opaque SmemStorage layout
-        T               input,              ///< [in] Input
-        T               &output,            ///< [out] Output (may be aliased to \p input)
+        T               input,              ///< [in] Calling thread's input items
+        T               &output,            ///< [out] Calling thread's output items (may be aliased to \p input)
         T               identity,           ///< [in] Identity value
         ScanOp          scan_op,            ///< [in] Binary scan operator
-        T               &aggregate)         ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate
+        T               &local_aggregate)   ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> CTA-wide aggregate reduction of input items
     {
         if (WARP_SYNCHRONOUS)
         {
@@ -257,7 +259,7 @@ public:
                 output,
                 identity,
                 scan_op,
-                aggregate);
+                local_aggregate);
         }
         else
         {
@@ -281,7 +283,7 @@ public:
                     raking_partial,
                     identity,
                     scan_op,
-                    aggregate);
+                    local_aggregate);
 
                 // Exclusive raking downsweep scan
                 ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial);
@@ -303,7 +305,7 @@ public:
 
 
     /**
-     * \brief Computes an exclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes an array of consecutive input elements.  Also computes the CTA-wide \p aggregate of all inputs for <em>thread</em><sub>0</sub>.
+     * \brief Computes an exclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes an array of consecutive input elements.  The inclusive CTA-wide \p aggregate of all inputs is computed for <em>thread</em><sub>0</sub>.
      *
      * The \p aggregate is undefined in threads other than <em>thread</em><sub>0</sub>.
      *
@@ -317,17 +319,17 @@ public:
         typename        ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
         SmemStorage       &smem_storage,                ///< [in] Shared reference to opaque SmemStorage layout
-        T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Input
-        T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Output (may be aliased to \p input)
+        T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Calling thread's input items
+        T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Calling thread's output items (may be aliased to \p input)
         T                 identity,                     ///< [in] Identity value
         ScanOp            scan_op,                      ///< [in] Binary scan operator
-        T                 &aggregate)                   ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate
+        T                 &local_aggregate)             ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> CTA-wide aggregate reduction of input items
     {
         // Reduce consecutive thread items in registers
         T thread_partial = ThreadReduce(input, scan_op);
 
         // Exclusive CTA-scan
-        ExclusiveScan(smem_storage, thread_partial, thread_partial, identity, scan_op, aggregate);
+        ExclusiveScan(smem_storage, thread_partial, thread_partial, identity, scan_op, local_aggregate);
 
         // Exclusive scan in registers with prefix
         ThreadScanExclusive(input, output, scan_op, thread_partial);
@@ -335,24 +337,26 @@ public:
 
 
     /**
-     * \brief Computes an exclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes one input element.  The \p cta_seed_prefix value from <em>thread</em><sub>0</sub> is applied to all scan outputs.  Also computes the CTA-wide \p aggregate of all inputs, inclusive of the \p cta_seed_prefix (valid in <em>thread</em><sub>0</sub>).
+     * \brief Computes an exclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes one input element.  The functor \p external_prefix is evaluated by <em>thread</em><sub>0</sub> to provide the preceding (or "base") value that logically prefixes the CTA's scan inputs.  The inclusive CTA-wide \p aggregate of all inputs is computed for <em>thread</em><sub>0</sub>.
      *
-     * The \p aggregate and \p cta_seed_prefix are undefined in threads other than <em>thread</em><sub>0</sub>.
+     * The \p aggregate and \p external_prefix are undefined in threads other than <em>thread</em><sub>0</sub>.
      *
      * \smemreuse
      *
      * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type
-     * \tparam CtaPrefixOp          <b>[inferred]</b> Unary functor of the model </em>operator()(T local_aggregate)</em>
+     * \tparam CtaPrefixOp          <b>[inferred]</b> A call-back unary functor of the model </em>operator()(T local_local_aggregate)</em>
      */
-    template <typename ScanOp>
+    template <
+        typename ScanOp,
+        typename CtaPrefixOp>
     static __device__ __forceinline__ void ExclusiveScan(
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
-        T               input,                          ///< [in] Input
-        T               &output,                        ///< [out] Output (may be aliased to \p input)
+        T               input,                          ///< [in] Calling thread's input item
+        T               &output,                        ///< [out] Calling thread's output item (may be aliased to \p input)
         T               identity,                       ///< [in] Identity value
         ScanOp          scan_op,                        ///< [in] Binary scan operator
-        T               &aggregate,                     ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate
-        CtaPrefixOp     &cta_seed_prefix)               ///< [in-out] <b>[<em>thread</em><sub>0</sub> only]</b> Unary functor of the model </em>operator()(T local_aggregate)</em> to be run <em>thread</em><sub>0</sub>.  This functor will be provided the local aggregate in return for a CTA-wide value to prefix all scan outputs with.  Can be stateful.
+        T               &local_aggregate,               ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> CTA-wide aggregate reduction of input items, exclusive of the \p external_prefix value
+        CtaPrefixOp     &external_prefix)               ///< [in-out] <b>[<em>thread</em><sub>0</sub> only]</b> A call-back unary functor of the model </em>operator()(T local_local_aggregate)</em> to be run <em>thread</em><sub>0</sub>.  When provided the CTA-wide aggregate of input items, this functor is expected to return the logical CTA-wide prefix to be applied during the scan operation.  Can be stateful.
     {
         if (WARP_SYNCHRONOUS)
         {
@@ -363,8 +367,8 @@ public:
                 output,
                 identity,
                 scan_op,
-                aggregate,
-                cta_seed_prefix);
+                local_aggregate,
+                external_prefix);
         }
         else
         {
@@ -388,8 +392,8 @@ public:
                     raking_partial,
                     identity,
                     scan_op,
-                    aggregate,
-                    cta_seed_prefix);
+                    local_aggregate,
+                    external_prefix);
 
                 // Exclusive raking downsweep scan
                 ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial);
@@ -410,15 +414,15 @@ public:
 
 
     /**
-     * \brief Computes an exclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes an array of consecutive input elements.  The \p cta_seed_prefix value from <em>thread</em><sub>0</sub> is applied to all scan outputs.  Also computes the CTA-wide \p aggregate of all inputs, inclusive of the \p cta_seed_prefix (valid in <em>thread</em><sub>0</sub>).
+     * \brief Computes an exclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes an array of consecutive input elements.  The functor \p external_prefix is evaluated by <em>thread</em><sub>0</sub> to provide the preceding (or "base") value that logically prefixes the CTA's scan inputs.  The inclusive CTA-wide \p aggregate of all inputs is computed for <em>thread</em><sub>0</sub>.
      *
-     * The \p aggregate and \p cta_seed_prefix are undefined in threads other than <em>thread</em><sub>0</sub>.
+     * The \p aggregate and \p external_prefix are undefined in threads other than <em>thread</em><sub>0</sub>.
      *
      * \smemreuse
      *
      * \tparam ITEMS_PER_THREAD     <b>[inferred]</b> The number of consecutive items partitioned onto each thread.
      * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type
-     * \tparam CtaPrefixOp          <b>[inferred]</b> Unary functor of the model </em>operator()(T local_aggregate)</em>
+     * \tparam CtaPrefixOp          <b>[inferred]</b> A call-back unary functor of the model </em>operator()(T local_local_aggregate)</em>
      */
     template <
         int             ITEMS_PER_THREAD,
@@ -426,18 +430,18 @@ public:
         typename        CtaPrefixOp>
     static __device__ __forceinline__ void ExclusiveScan(
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
-        T               (&input)[ITEMS_PER_THREAD],     ///< [in] Input
-        T               (&output)[ITEMS_PER_THREAD],    ///< [out] Output (may be aliased to \p input)
+        T               (&input)[ITEMS_PER_THREAD],     ///< [in] Calling thread's input items
+        T               (&output)[ITEMS_PER_THREAD],    ///< [out] Calling thread's output items (may be aliased to \p input)
         T               identity,                       ///< [in] Identity value
         ScanOp          scan_op,                        ///< [in] Binary scan operator
-        T               &aggregate,                     ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate
-        CtaPrefixOp     &cta_seed_prefix)               ///< [in-out] <b>[<em>thread</em><sub>0</sub> only]</b> Unary functor of the model </em>operator()(T local_aggregate)</em> to be run <em>thread</em><sub>0</sub>.  This functor will be provided the local aggregate in return for a CTA-wide value to prefix all scan outputs with.  Can be stateful.
+        T               &local_aggregate,               ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> CTA-wide aggregate reduction of input items, exclusive of the \p external_prefix value
+        CtaPrefixOp     &external_prefix)               ///< [in-out] <b>[<em>thread</em><sub>0</sub> only]</b> A call-back unary functor of the model </em>operator()(T local_local_aggregate)</em> to be run <em>thread</em><sub>0</sub>.  When provided the CTA-wide aggregate of input items, this functor is expected to return the logical CTA-wide prefix to be applied during the scan operation.  Can be stateful.
     {
         // Reduce consecutive thread items in registers
         T thread_partial = ThreadReduce(input, scan_op);
 
         // Exclusive CTA-scan
-        ExclusiveScan(smem_storage, thread_partial, thread_partial, identity, scan_op, aggregate, cta_seed_prefix);
+        ExclusiveScan(smem_storage, thread_partial, thread_partial, identity, scan_op, local_aggregate, external_prefix);
 
         // Exclusive scan in registers with prefix
         ThreadScanExclusive(input, output, scan_op, thread_partial);
@@ -454,13 +458,13 @@ public:
     template <typename ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
-        T               input,                          ///< [in] Input
-        T               &output,                        ///< [out] Output (may be aliased to \p input)
+        T               input,                          ///< [in] Calling thread's input item
+        T               &output,                        ///< [out] Calling thread's output item (may be aliased to \p input)
         T               identity,                       ///< [in] Identity value
         ScanOp          scan_op)                        ///< [in] Binary scan operator
     {
-        T aggregate;
-        ExclusiveScan(smem_storage, input, output, identity, scan_op, aggregate);
+        T local_aggregate;
+        ExclusiveScan(smem_storage, input, output, identity, scan_op, local_aggregate);
     }
 
 
@@ -478,8 +482,8 @@ public:
         typename         ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
         SmemStorage       &smem_storage,                ///< [in] Shared reference to opaque SmemStorage layout
-        T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Input
-        T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Output (may be aliased to \p input)
+        T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Calling thread's input items
+        T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Calling thread's output items (may be aliased to \p input)
         T                 identity,                     ///< [in] Identity value
         ScanOp            scan_op)                      ///< [in] Binary scan operator
     {
@@ -502,7 +506,7 @@ public:
 
 
     /**
-     * \brief Computes an exclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes one input element.  Also computes the CTA-wide \p aggregate of all inputs for <em>thread</em><sub>0</sub>.  With no identity value, the output computed for <em>thread</em><sub>0</sub> is invalid.
+     * \brief Computes an exclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes one input element.  The inclusive CTA-wide \p aggregate of all inputs is computed for <em>thread</em><sub>0</sub>.  With no identity value, the output computed for <em>thread</em><sub>0</sub> is invalid.
      *
      * The \p aggregate is undefined in threads other than <em>thread</em><sub>0</sub>.
      *
@@ -513,10 +517,10 @@ public:
     template <typename ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
-        T               input,                          ///< [in] Input
-        T               &output,                        ///< [out] Output (may be aliased to \p input)
+        T               input,                          ///< [in] Calling thread's input item
+        T               &output,                        ///< [out] Calling thread's output item (may be aliased to \p input)
         ScanOp          scan_op,                        ///< [in] Binary scan operator
-        T               &aggregate)                     ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate
+        T               &local_aggregate)               ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> CTA-wide aggregate reduction of input items
     {
         if (WARP_SYNCHRONOUS)
         {
@@ -526,7 +530,7 @@ public:
                 input,
                 output,
                 scan_op,
-                aggregate);
+                local_aggregate);
         }
         else
         {
@@ -549,7 +553,7 @@ public:
                     raking_partial,
                     raking_partial,
                     scan_op,
-                    aggregate);
+                    local_aggregate);
 
                 // Exclusive raking downsweep scan
                 ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial, (threadIdx.x != 0));
@@ -570,7 +574,7 @@ public:
 
 
     /**
-     * \brief Computes an exclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes an array of consecutive input elements.  Also computes the CTA-wide \p aggregate of all inputs for <em>thread</em><sub>0</sub>.  With no identity value, the output computed for <em>thread</em><sub>0</sub> is invalid.
+     * \brief Computes an exclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes an array of consecutive input elements.  The inclusive CTA-wide \p aggregate of all inputs is computed for <em>thread</em><sub>0</sub>.  With no identity value, the output computed for <em>thread</em><sub>0</sub> is invalid.
      *
      * The \p aggregate is undefined in threads other than <em>thread</em><sub>0</sub>.
      *
@@ -584,16 +588,16 @@ public:
         typename         ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
         SmemStorage        &smem_storage,               ///< [in] Shared reference to opaque SmemStorage layout
-        T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Input
-        T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Output (may be aliased to \p input)
+        T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Calling thread's input items
+        T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Calling thread's output items (may be aliased to \p input)
         ScanOp          scan_op,                        ///< [in] Binary scan operator
-        T               &aggregate)                     ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate
+        T               &local_aggregate)               ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> CTA-wide aggregate reduction of input items
     {
         // Reduce consecutive thread items in registers
         T thread_partial = ThreadReduce(input, scan_op);
 
         // Exclusive CTA-scan
-        ExclusiveScan(smem_storage, thread_partial, thread_partial, scan_op, aggregate);
+        ExclusiveScan(smem_storage, thread_partial, thread_partial, scan_op, local_aggregate);
 
         // Exclusive scan in registers with prefix
         ThreadScanExclusive(input, output, scan_op, thread_partial, (threadIdx.x != 0));
@@ -601,22 +605,25 @@ public:
 
 
     /**
-     * \brief Computes an exclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes one input element.  The \p cta_seed_prefix value from <em>thread</em><sub>0</sub> is applied to all scan outputs.  Also computes the CTA-wide \p aggregate of all inputs, inclusive of the \p cta_seed_prefix (valid in <em>thread</em><sub>0</sub>).  With no identity value, the output computed for <em>thread</em><sub>0</sub> is invalid.
+     * \brief Computes an exclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes one input element.  The functor \p external_prefix is evaluated by <em>thread</em><sub>0</sub> to provide the preceding (or "base") value that logically prefixes the CTA's scan inputs.  The inclusive CTA-wide \p aggregate of all inputs is computed for <em>thread</em><sub>0</sub>.  With no identity value, the output computed for <em>thread</em><sub>0</sub> is invalid.
      *
-     * The \p aggregate and \p cta_seed_prefix are undefined in threads other than <em>thread</em><sub>0</sub>.
+     * The \p aggregate and \p external_prefix are undefined in threads other than <em>thread</em><sub>0</sub>.
      *
      * \smemreuse
      *
      * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type
+     * \tparam CtaPrefixOp          <b>[inferred]</b> A call-back unary functor of the model </em>operator()(T local_local_aggregate)</em>
      */
-    template <typename ScanOp>
+    template <
+        typename ScanOp,
+        typename CtaPrefixOp>
     static __device__ __forceinline__ void ExclusiveScan(
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
-        T               input,                          ///< [in] Input
-        T               &output,                        ///< [out] Output (may be aliased to \p input)
+        T               input,                          ///< [in] Calling thread's input item
+        T               &output,                        ///< [out] Calling thread's output item (may be aliased to \p input)
         ScanOp          scan_op,                        ///< [in] Binary scan operator
-        T               &aggregate,                     ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate
-        CtaPrefixOp     &cta_seed_prefix)               ///< [in-out] <b>[<em>thread</em><sub>0</sub> only]</b> Unary functor of the model </em>operator()(T local_aggregate)</em> to be run <em>thread</em><sub>0</sub>.  This functor will be provided the local aggregate in return for a CTA-wide value to prefix all scan outputs with.  Can be stateful.
+        T               &local_aggregate,               ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> CTA-wide aggregate reduction of input items, exclusive of the \p external_prefix value
+        CtaPrefixOp     &external_prefix)               ///< [in-out] <b>[<em>thread</em><sub>0</sub> only]</b> A call-back unary functor of the model </em>operator()(T local_local_aggregate)</em> to be run <em>thread</em><sub>0</sub>.  When provided the CTA-wide aggregate of input items, this functor is expected to return the logical CTA-wide prefix to be applied during the scan operation.  Can be stateful.
     {
         if (WARP_SYNCHRONOUS)
         {
@@ -626,8 +633,8 @@ public:
                 input,
                 output,
                 scan_op,
-                aggregate,
-                cta_seed_prefix);
+                local_aggregate,
+                external_prefix);
         }
         else
         {
@@ -650,8 +657,8 @@ public:
                     raking_partial,
                     raking_partial,
                     scan_op,
-                    aggregate,
-                    cta_seed_prefix);
+                    local_aggregate,
+                    external_prefix);
 
                 // Exclusive raking downsweep scan
                 ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial);
@@ -672,31 +679,33 @@ public:
 
 
     /**
-     * \brief Computes an exclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes an array of consecutive input elements.  The \p cta_seed_prefix value from <em>thread</em><sub>0</sub> is applied to all scan outputs.  Also computes the CTA-wide \p aggregate of all inputs, inclusive of the \p cta_seed_prefix (valid in <em>thread</em><sub>0</sub>).  With no identity value, the output computed for <em>thread</em><sub>0</sub> is invalid.
+     * \brief Computes an exclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes an array of consecutive input elements.  The functor \p external_prefix is evaluated by <em>thread</em><sub>0</sub> to provide the preceding (or "base") value that logically prefixes the CTA's scan inputs.  The inclusive CTA-wide \p aggregate of all inputs is computed for <em>thread</em><sub>0</sub>.  With no identity value, the output computed for <em>thread</em><sub>0</sub> is invalid.
      *
-     * The \p aggregate and \p cta_seed_prefix are undefined in threads other than <em>thread</em><sub>0</sub>.
+     * The \p aggregate and \p external_prefix are undefined in threads other than <em>thread</em><sub>0</sub>.
      *
      * \smemreuse
      *
      * \tparam ITEMS_PER_THREAD     <b>[inferred]</b> The number of consecutive items partitioned onto each thread.
      * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type
+     * \tparam CtaPrefixOp          <b>[inferred]</b> A call-back unary functor of the model </em>operator()(T local_local_aggregate)</em>
      */
     template <
         int             ITEMS_PER_THREAD,
-        typename         ScanOp>
+        typename        ScanOp,
+        typename        CtaPrefixOp>
     static __device__ __forceinline__ void ExclusiveScan(
         SmemStorage      &smem_storage,               ///< [in] Shared reference to opaque SmemStorage layout
-        T               (&input)[ITEMS_PER_THREAD],   ///< [in] Input
-        T               (&output)[ITEMS_PER_THREAD],  ///< [out] Output (may be aliased to \p input)
+        T               (&input)[ITEMS_PER_THREAD],   ///< [in] Calling thread's input items
+        T               (&output)[ITEMS_PER_THREAD],  ///< [out] Calling thread's output items (may be aliased to \p input)
         ScanOp          scan_op,                      ///< [in] Binary scan operator
-        T               &aggregate,                   ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate
-        CtaPrefixOp     &cta_seed_prefix)             ///< [in-out] <b>[<em>thread</em><sub>0</sub> only]</b> Unary functor of the model </em>operator()(T local_aggregate)</em> to be run <em>thread</em><sub>0</sub>.  This functor will be provided the local aggregate in return for a CTA-wide value to prefix all scan outputs with.  Can be stateful.
+        T               &local_aggregate,             ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> CTA-wide aggregate reduction of input items, exclusive of the \p external_prefix value
+        CtaPrefixOp     &external_prefix)             ///< [in-out] <b>[<em>thread</em><sub>0</sub> only]</b> A call-back unary functor of the model </em>operator()(T local_local_aggregate)</em> to be run <em>thread</em><sub>0</sub>.  When provided the CTA-wide aggregate of input items, this functor is expected to return the logical CTA-wide prefix to be applied during the scan operation.  Can be stateful.
     {
         // Reduce consecutive thread items in registers
         T thread_partial = ThreadReduce(input, scan_op);
 
         // Exclusive CTA-scan
-        ExclusiveScan(smem_storage, thread_partial, thread_partial, scan_op, aggregate, cta_seed_prefix);
+        ExclusiveScan(smem_storage, thread_partial, thread_partial, scan_op, local_aggregate, external_prefix);
 
         // Exclusive scan in registers with prefix
         ThreadScanExclusive(input, output, scan_op, thread_partial);
@@ -713,12 +722,12 @@ public:
     template <typename ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
-        T               input,                          ///< [in] Input
-        T               &output,                        ///< [out] Output (may be aliased to \p input)
+        T               input,                          ///< [in] Calling thread's input item
+        T               &output,                        ///< [out] Calling thread's output item (may be aliased to \p input)
         ScanOp          scan_op)                        ///< [in] Binary scan operator
     {
-        T aggregate;
-        ExclusiveScan(smem_storage, input, output, scan_op, aggregate);
+        T local_aggregate;
+        ExclusiveScan(smem_storage, input, output, scan_op, local_aggregate);
     }
 
 
@@ -735,8 +744,8 @@ public:
         typename         ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
         SmemStorage        &smem_storage,               ///< [in] Shared reference to opaque SmemStorage layout
-        T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Input
-        T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Output (may be aliased to \p input)
+        T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Calling thread's input items
+        T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Calling thread's output items (may be aliased to \p input)
         ScanOp            scan_op)                      ///< [in] Binary scan operator
     {
         // Reduce consecutive thread items in registers
@@ -758,7 +767,7 @@ public:
 
 
     /**
-     * \brief Computes an exclusive CTA-wide prefix scan using addition (+) as the scan operator.  Each thread contributes one input element.  Also computes the CTA-wide \p aggregate of all inputs for <em>thread</em><sub>0</sub>.
+     * \brief Computes an exclusive CTA-wide prefix scan using addition (+) as the scan operator.  Each thread contributes one input element.  The inclusive CTA-wide \p aggregate of all inputs is computed for <em>thread</em><sub>0</sub>.
      *
      * The \p aggregate is undefined in threads other than <em>thread</em><sub>0</sub>.
      *
@@ -766,9 +775,9 @@ public:
      */
     static __device__ __forceinline__ void ExclusiveSum(
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
-        T               input,                          ///< [in] Input
-        T               &output,                        ///< [out] Output (may be aliased to \p input)
-        T               &aggregate)                     ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate
+        T               input,                          ///< [in] Calling thread's input item
+        T               &output,                        ///< [out] Calling thread's output item (may be aliased to \p input)
+        T               &local_aggregate)               ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> CTA-wide aggregate reduction of input items
     {
         if (WARP_SYNCHRONOUS)
         {
@@ -777,7 +786,7 @@ public:
                 smem_storage.warp_scan,
                 input,
                 output,
-                aggregate);
+                local_aggregate);
         }
         else
         {
@@ -802,7 +811,7 @@ public:
                     smem_storage.warp_scan,
                     raking_partial,
                     raking_partial,
-                    aggregate);
+                    local_aggregate);
 
                 // Exclusive raking downsweep scan
                 ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial, (threadIdx.x != 0));
@@ -823,7 +832,7 @@ public:
 
 
     /**
-     * \brief Computes an exclusive CTA-wide prefix scan using addition (+) as the scan operator.  Each thread contributes an array of consecutive input elements.  Also computes the CTA-wide \p aggregate of all inputs for <em>thread</em><sub>0</sub>.
+     * \brief Computes an exclusive CTA-wide prefix scan using addition (+) as the scan operator.  Each thread contributes an array of consecutive input elements.  The inclusive CTA-wide \p aggregate of all inputs is computed for <em>thread</em><sub>0</sub>.
      *
      * The \p aggregate is undefined in threads other than <em>thread</em><sub>0</sub>.
      *
@@ -833,17 +842,17 @@ public:
      */
     template <int ITEMS_PER_THREAD>
     static __device__ __forceinline__ void ExclusiveSum(
-        SmemStorage        &smem_storage,               ///< [in] Shared reference to opaque SmemStorage layout
-        T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Input
-        T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Output (may be aliased to \p input)
-        T                 &aggregate)                   ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate
+        SmemStorage        &smem_storage,                   ///< [in] Shared reference to opaque SmemStorage layout
+        T                 (&input)[ITEMS_PER_THREAD],       ///< [in] Calling thread's input items
+        T                 (&output)[ITEMS_PER_THREAD],      ///< [out] Calling thread's output items (may be aliased to \p input)
+        T                 &local_aggregate)                 ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> CTA-wide aggregate reduction of input items
     {
         // Reduce consecutive thread items in registers
         Sum<T> scan_op;
         T thread_partial = ThreadReduce(input, scan_op);
 
         // Exclusive CTA-scan
-        ExclusiveSum(smem_storage, thread_partial, thread_partial, aggregate);
+        ExclusiveSum(smem_storage, thread_partial, thread_partial, local_aggregate);
 
         // Exclusive scan in registers with prefix
         ThreadScanExclusive(input, output, scan_op, thread_partial, (threadIdx.x != 0));
@@ -851,18 +860,21 @@ public:
 
 
     /**
-     * \brief Computes an exclusive CTA-wide prefix scan using addition (+) as the scan operator.  Each thread contributes one input element.  The \p cta_seed_prefix value from <em>thread</em><sub>0</sub> is applied to all scan outputs.  Also computes the CTA-wide \p aggregate of all inputs, inclusive of the \p cta_seed_prefix (valid in <em>thread</em><sub>0</sub>).
+     * \brief Computes an exclusive CTA-wide prefix scan using addition (+) as the scan operator.  Each thread contributes one input element.  The functor \p external_prefix is evaluated by <em>thread</em><sub>0</sub> to provide the preceding (or "base") value that logically prefixes the CTA's scan inputs.  The inclusive CTA-wide \p aggregate of all inputs is computed for <em>thread</em><sub>0</sub>.
      *
-     * The \p aggregate and \p cta_seed_prefix are undefined in threads other than <em>thread</em><sub>0</sub>.
+     * The \p aggregate and \p external_prefix are undefined in threads other than <em>thread</em><sub>0</sub>.
      *
      * \smemreuse
+     *
+     * \tparam CtaPrefixOp          <b>[inferred]</b> A call-back unary functor of the model </em>operator()(T local_local_aggregate)</em>
      */
+    template <typename CtaPrefixOp>
     static __device__ __forceinline__ void ExclusiveSum(
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
-        T               input,                          ///< [in] Input
-        T               &output,                        ///< [out] Output (may be aliased to \p input)
-        T               &aggregate,                     ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate
-        T               &cta_seed_prefix)                    ///< [in-out] <b>[<em>thread</em><sub>0</sub> only]</b> Unary functor of the model </em>T cta_seed_prefix(T aggregate)</em> to be run <em>thread</em><sub>0</sub> for providing the operation with a CTA-wide prefix value to seed the scan with.  Can be stateful.
+        T               input,                          ///< [in] Calling thread's input item
+        T               &output,                        ///< [out] Calling thread's output item (may be aliased to \p input)
+        T               &local_aggregate,               ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> CTA-wide aggregate reduction of input items, exclusive of the \p external_prefix value
+        CtaPrefixOp     &external_prefix)               ///< [in-out] <b>[<em>thread</em><sub>0</sub> only]</b> A call-back unary functor of the model </em>T external_prefix(T local_aggregate)</em> to be run <em>thread</em><sub>0</sub> for providing the operation with a CTA-wide prefix value to seed the scan with.  Can be stateful.
     {
         if (WARP_SYNCHRONOUS)
         {
@@ -871,8 +883,8 @@ public:
                 smem_storage.warp_scan,
                 input,
                 output,
-                aggregate,
-                cta_seed_prefix);
+                local_aggregate,
+                external_prefix);
         }
         else
         {
@@ -897,8 +909,8 @@ public:
                     smem_storage.warp_scan,
                     raking_partial,
                     raking_partial,
-                    aggregate,
-                    cta_seed_prefix);
+                    local_aggregate,
+                    external_prefix);
 
                 // Exclusive raking downsweep scan
                 ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial);
@@ -919,28 +931,31 @@ public:
 
 
     /**
-     * \brief Computes an exclusive CTA-wide prefix scan using addition (+) as the scan operator.  Each thread contributes an array of consecutive input elements.  The \p cta_seed_prefix value from <em>thread</em><sub>0</sub> is applied to all scan outputs.  Also computes the CTA-wide \p aggregate of all inputs, inclusive of the \p cta_seed_prefix (valid in <em>thread</em><sub>0</sub>).
+     * \brief Computes an exclusive CTA-wide prefix scan using addition (+) as the scan operator.  Each thread contributes an array of consecutive input elements.  The functor \p external_prefix is evaluated by <em>thread</em><sub>0</sub> to provide the preceding (or "base") value that logically prefixes the CTA's scan inputs.  The inclusive CTA-wide \p aggregate of all inputs is computed for <em>thread</em><sub>0</sub>.
      *
-     * The \p aggregate and \p cta_seed_prefix are undefined in threads other than <em>thread</em><sub>0</sub>.
+     * The \p aggregate and \p external_prefix are undefined in threads other than <em>thread</em><sub>0</sub>.
      *
      * \smemreuse
      *
      * \tparam ITEMS_PER_THREAD     <b>[inferred]</b> The number of consecutive items partitioned onto each thread.
+     * \tparam CtaPrefixOp          <b>[inferred]</b> A call-back unary functor of the model </em>operator()(T local_local_aggregate)</em>
      */
-    template <int ITEMS_PER_THREAD>
+    template <
+        int ITEMS_PER_THREAD,
+        typename CtaPrefixOp>
     static __device__ __forceinline__ void ExclusiveSum(
         SmemStorage       &smem_storage,                ///< [in] Shared reference to opaque SmemStorage layout
-        T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Input
-        T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Output (may be aliased to \p input)
-        T                 &aggregate,                   ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate
-        CtaPrefixOp       &cta_seed_prefix)             ///< [in-out] <b>[<em>thread</em><sub>0</sub> only]</b> Unary functor of the model </em>operator()(T local_aggregate)</em> to be run <em>thread</em><sub>0</sub>.  This functor will be provided the local aggregate in return for a CTA-wide value to prefix all scan outputs with.  Can be stateful.
+        T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Calling thread's input items
+        T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Calling thread's output items (may be aliased to \p input)
+        T                 &local_aggregate,             ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> CTA-wide aggregate reduction of input items, exclusive of the \p external_prefix value
+        CtaPrefixOp       &external_prefix)             ///< [in-out] <b>[<em>thread</em><sub>0</sub> only]</b> A call-back unary functor of the model </em>operator()(T local_local_aggregate)</em> to be run <em>thread</em><sub>0</sub>.  When provided the CTA-wide aggregate of input items, this functor is expected to return the logical CTA-wide prefix to be applied during the scan operation.  Can be stateful.
     {
         // Reduce consecutive thread items in registers
         Sum<T> scan_op;
         T thread_partial = ThreadReduce(input, scan_op);
 
         // Exclusive CTA-scan
-        ExclusiveSum(smem_storage, thread_partial, thread_partial, aggregate, cta_seed_prefix);
+        ExclusiveSum(smem_storage, thread_partial, thread_partial, local_aggregate, external_prefix);
 
         // Exclusive scan in registers with prefix
         ThreadScanExclusive(input, output, scan_op, thread_partial);
@@ -954,11 +969,11 @@ public:
      */
     static __device__ __forceinline__ void ExclusiveSum(
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
-        T               input,                          ///< [in] Input
-        T               &output)                        ///< [out] Output (may be aliased to \p input)
+        T               input,                          ///< [in] Calling thread's input item
+        T               &output)                        ///< [out] Calling thread's output item (may be aliased to \p input)
     {
-        T aggregate;
-        ExclusiveSum(smem_storage, input, output, aggregate);
+        T local_aggregate;
+        ExclusiveSum(smem_storage, input, output, local_aggregate);
     }
 
 
@@ -972,8 +987,8 @@ public:
     template <int ITEMS_PER_THREAD>
     static __device__ __forceinline__ void ExclusiveSum(
         SmemStorage        &smem_storage,               ///< [in] Shared reference to opaque SmemStorage layout
-        T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Input
-        T                 (&output)[ITEMS_PER_THREAD])  ///< [out] Output (may be aliased to \p input)
+        T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Calling thread's input items
+        T                 (&output)[ITEMS_PER_THREAD])  ///< [out] Calling thread's output items (may be aliased to \p input)
     {
         // Reduce consecutive thread items in registers
         Sum<T> scan_op;
@@ -995,7 +1010,7 @@ public:
 
 
     /**
-     * \brief Computes an inclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes one input element.  Also computes the CTA-wide \p aggregate of all inputs for <em>thread</em><sub>0</sub>.
+     * \brief Computes an inclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes one input element.  The inclusive CTA-wide \p aggregate of all inputs is computed for <em>thread</em><sub>0</sub>.
      *
      * The \p aggregate is undefined in threads other than <em>thread</em><sub>0</sub>.
      *
@@ -1006,10 +1021,10 @@ public:
     template <typename ScanOp>
     static __device__ __forceinline__ void InclusiveScan(
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
-        T               input,                          ///< [in] Input
-        T               &output,                        ///< [out] Output (may be aliased to \p input)
+        T               input,                          ///< [in] Calling thread's input item
+        T               &output,                        ///< [out] Calling thread's output item (may be aliased to \p input)
         ScanOp          scan_op,                        ///< [in] Binary scan operator
-        T               &aggregate)                     ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate
+        T               &local_aggregate)               ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> CTA-wide aggregate reduction of input items
     {
         if (WARP_SYNCHRONOUS)
         {
@@ -1019,7 +1034,7 @@ public:
                 input,
                 output,
                 scan_op,
-                aggregate);
+                local_aggregate);
         }
         else
         {
@@ -1042,7 +1057,7 @@ public:
                     raking_partial,
                     raking_partial,
                     scan_op,
-                    aggregate);
+                    local_aggregate);
 
                 // Exclusive raking downsweep scan
                 ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial, (threadIdx.x != 0));
@@ -1063,7 +1078,7 @@ public:
 
 
     /**
-     * \brief Computes an inclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes an array of consecutive input elements.  Also computes the CTA-wide \p aggregate of all inputs for <em>thread</em><sub>0</sub>.
+     * \brief Computes an inclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes an array of consecutive input elements.  The inclusive CTA-wide \p aggregate of all inputs is computed for <em>thread</em><sub>0</sub>.
      *
      * The \p aggregate is undefined in threads other than <em>thread</em><sub>0</sub>.
      *
@@ -1077,16 +1092,16 @@ public:
         typename         ScanOp>
     static __device__ __forceinline__ void InclusiveScan(
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
-        T               (&input)[ITEMS_PER_THREAD],     ///< [in] Input
-        T               (&output)[ITEMS_PER_THREAD],    ///< [out] Output (may be aliased to \p input)
+        T               (&input)[ITEMS_PER_THREAD],     ///< [in] Calling thread's input items
+        T               (&output)[ITEMS_PER_THREAD],    ///< [out] Calling thread's output items (may be aliased to \p input)
         ScanOp          scan_op,                        ///< [in] Binary scan operator
-        T               &aggregate)                     ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate
+        T               &local_aggregate)               ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> CTA-wide aggregate reduction of input items
     {
         // Reduce consecutive thread items in registers
         T thread_partial = ThreadReduce(input, scan_op);
 
         // Exclusive CTA-scan
-        ExclusiveScan(smem_storage, thread_partial, thread_partial, scan_op, aggregate);
+        ExclusiveScan(smem_storage, thread_partial, thread_partial, scan_op, local_aggregate);
 
         // Inclusive scan in registers with prefix
         ThreadScanInclusive(input, output, scan_op, thread_partial, (threadIdx.x != 0));
@@ -1094,22 +1109,25 @@ public:
 
 
     /**
-     * \brief Computes an inclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes one input element.  The \p cta_seed_prefix value from <em>thread</em><sub>0</sub> is applied to all scan outputs.  Also computes the CTA-wide \p aggregate of all inputs, inclusive of the \p cta_seed_prefix (valid in <em>thread</em><sub>0</sub>).
+     * \brief Computes an inclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes one input element.  The functor \p external_prefix is evaluated by <em>thread</em><sub>0</sub> to provide the preceding (or "base") value that logically prefixes the CTA's scan inputs.  The inclusive CTA-wide \p aggregate of all inputs is computed for <em>thread</em><sub>0</sub>.
      *
-     * The \p aggregate and \p cta_seed_prefix are undefined in threads other than <em>thread</em><sub>0</sub>.
+     * The \p aggregate and \p external_prefix are undefined in threads other than <em>thread</em><sub>0</sub>.
      *
      * \smemreuse
      *
      * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type
+     * \tparam CtaPrefixOp          <b>[inferred]</b> A call-back unary functor of the model </em>operator()(T local_local_aggregate)</em>
      */
-    template <typename ScanOp>
+    template <
+        typename ScanOp,
+        typename CtaPrefixOp>
     static __device__ __forceinline__ void InclusiveScan(
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
-        T               input,                          ///< [in] Input
-        T               &output,                        ///< [out] Output (may be aliased to \p input)
+        T               input,                          ///< [in] Calling thread's input item
+        T               &output,                        ///< [out] Calling thread's output item (may be aliased to \p input)
         ScanOp          scan_op,                        ///< [in] Binary scan operator
-        T               &aggregate,                     ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate
-        CtaPrefixOp     &cta_seed_prefix)               ///< [in-out] <b>[<em>thread</em><sub>0</sub> only]</b> Unary functor of the model </em>operator()(T local_aggregate)</em> to be run <em>thread</em><sub>0</sub>.  This functor will be provided the local aggregate in return for a CTA-wide value to prefix all scan outputs with.  Can be stateful.
+        T               &local_aggregate,               ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> CTA-wide aggregate reduction of input items, exclusive of the \p external_prefix value
+        CtaPrefixOp     &external_prefix)               ///< [in-out] <b>[<em>thread</em><sub>0</sub> only]</b> A call-back unary functor of the model </em>operator()(T local_local_aggregate)</em> to be run <em>thread</em><sub>0</sub>.  When provided the CTA-wide aggregate of input items, this functor is expected to return the logical CTA-wide prefix to be applied during the scan operation.  Can be stateful.
     {
         if (WARP_SYNCHRONOUS)
         {
@@ -1119,8 +1137,8 @@ public:
                 input,
                 output,
                 scan_op,
-                aggregate,
-                cta_seed_prefix);
+                local_aggregate,
+                external_prefix);
         }
         else
         {
@@ -1143,8 +1161,8 @@ public:
                     raking_partial,
                     raking_partial,
                     scan_op,
-                    aggregate,
-                    cta_seed_prefix);
+                    local_aggregate,
+                    external_prefix);
 
                 // Exclusive raking downsweep scan
                 ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial);
@@ -1165,31 +1183,33 @@ public:
 
 
     /**
-     * \brief Computes an inclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes an array of consecutive input elements.  The \p cta_seed_prefix value from <em>thread</em><sub>0</sub> is applied to all scan outputs.  Also computes the CTA-wide \p aggregate of all inputs, inclusive of the \p cta_seed_prefix (valid in <em>thread</em><sub>0</sub>).
+     * \brief Computes an inclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes an array of consecutive input elements.  The functor \p external_prefix is evaluated by <em>thread</em><sub>0</sub> to provide the preceding (or "base") value that logically prefixes the CTA's scan inputs.  The inclusive CTA-wide \p aggregate of all inputs is computed for <em>thread</em><sub>0</sub>.
      *
-     * The \p aggregate and \p cta_seed_prefix are undefined in threads other than <em>thread</em><sub>0</sub>.
+     * The \p aggregate and \p external_prefix are undefined in threads other than <em>thread</em><sub>0</sub>.
      *
      * \smemreuse
      *
      * \tparam ITEMS_PER_THREAD     <b>[inferred]</b> The number of consecutive items partitioned onto each thread.
      * \tparam ScanOp               <b>[inferred]</b> Binary scan functor type
+     * \tparam CtaPrefixOp          <b>[inferred]</b> A call-back unary functor of the model </em>operator()(T local_local_aggregate)</em>
      */
     template <
         int             ITEMS_PER_THREAD,
-        typename         ScanOp>
+        typename        ScanOp,
+        typename        CtaPrefixOp>
     static __device__ __forceinline__ void InclusiveScan(
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
-        T               (&input)[ITEMS_PER_THREAD],     ///< [in] Input
-        T               (&output)[ITEMS_PER_THREAD],    ///< [out] Output (may be aliased to \p input)
+        T               (&input)[ITEMS_PER_THREAD],     ///< [in] Calling thread's input items
+        T               (&output)[ITEMS_PER_THREAD],    ///< [out] Calling thread's output items (may be aliased to \p input)
         ScanOp          scan_op,                        ///< [in] Binary scan operator
-        T               &aggregate,                     ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate
-        CtaPrefixOp     &cta_seed_prefix)               ///< [in-out] <b>[<em>thread</em><sub>0</sub> only]</b> Unary functor of the model </em>operator()(T local_aggregate)</em> to be run <em>thread</em><sub>0</sub>.  This functor will be provided the local aggregate in return for a CTA-wide value to prefix all scan outputs with.  Can be stateful.
+        T               &local_aggregate,               ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> CTA-wide aggregate reduction of input items, exclusive of the \p external_prefix value
+        CtaPrefixOp     &external_prefix)               ///< [in-out] <b>[<em>thread</em><sub>0</sub> only]</b> A call-back unary functor of the model </em>operator()(T local_local_aggregate)</em> to be run <em>thread</em><sub>0</sub>.  When provided the CTA-wide aggregate of input items, this functor is expected to return the logical CTA-wide prefix to be applied during the scan operation.  Can be stateful.
     {
         // Reduce consecutive thread items in registers
         T thread_partial = ThreadReduce(input, scan_op);
 
         // Exclusive CTA-scan
-        ExclusiveScan(smem_storage, thread_partial, thread_partial, scan_op, aggregate, cta_seed_prefix);
+        ExclusiveScan(smem_storage, thread_partial, thread_partial, scan_op, local_aggregate, external_prefix);
 
         // Inclusive scan in registers with prefix
         ThreadScanInclusive(input, output, scan_op, thread_partial);
@@ -1206,12 +1226,12 @@ public:
     template <typename ScanOp>
     static __device__ __forceinline__ void InclusiveScan(
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
-        T               input,                          ///< [in] Input
-        T               &output,                        ///< [out] Output (may be aliased to \p input)
+        T               input,                          ///< [in] Calling thread's input item
+        T               &output,                        ///< [out] Calling thread's output item (may be aliased to \p input)
         ScanOp          scan_op)                        ///< [in] Binary scan operator
     {
-        T aggregate;
-        InclusiveScan(smem_storage, input, output, scan_op, aggregate);
+        T local_aggregate;
+        InclusiveScan(smem_storage, input, output, scan_op, local_aggregate);
     }
 
 
@@ -1228,8 +1248,8 @@ public:
         typename        ScanOp>
     static __device__ __forceinline__ void InclusiveScan(
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
-        T               (&input)[ITEMS_PER_THREAD],     ///< [in] Input
-        T               (&output)[ITEMS_PER_THREAD],    ///< [out] Output (may be aliased to \p input)
+        T               (&input)[ITEMS_PER_THREAD],     ///< [in] Calling thread's input items
+        T               (&output)[ITEMS_PER_THREAD],    ///< [out] Calling thread's output items (may be aliased to \p input)
         ScanOp          scan_op)                        ///< [in] Binary scan operator
     {
         // Reduce consecutive thread items in registers
@@ -1251,7 +1271,7 @@ public:
 
 
     /**
-     * \brief Computes an inclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes one input element.  Also computes the CTA-wide \p aggregate of all inputs for <em>thread</em><sub>0</sub>.
+     * \brief Computes an inclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes one input element.  The inclusive CTA-wide \p aggregate of all inputs is computed for <em>thread</em><sub>0</sub>.
      *
      * The \p aggregate is undefined in threads other than <em>thread</em><sub>0</sub>.
      *
@@ -1259,9 +1279,9 @@ public:
      */
     static __device__ __forceinline__ void InclusiveSum(
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
-        T               input,                          ///< [in] Input
-        T               &output,                        ///< [out] Output (may be aliased to \p input)
-        T               &aggregate)                     ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate
+        T               input,                          ///< [in] Calling thread's input item
+        T               &output,                        ///< [out] Calling thread's output item (may be aliased to \p input)
+        T               &local_aggregate)               ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> CTA-wide aggregate reduction of input items
     {
         if (WARP_SYNCHRONOUS)
         {
@@ -1270,7 +1290,7 @@ public:
                 smem_storage.warp_scan,
                 input,
                 output,
-                aggregate);
+                local_aggregate);
         }
         else
         {
@@ -1295,7 +1315,7 @@ public:
                     smem_storage.warp_scan,
                     raking_partial,
                     raking_partial,
-                    aggregate);
+                    local_aggregate);
 
                 // Exclusive raking downsweep scan
                 ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial, (threadIdx.x != 0));
@@ -1316,7 +1336,7 @@ public:
 
 
     /**
-     * \brief Computes an inclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes an array of consecutive input elements.  Also computes the CTA-wide \p aggregate of all inputs for <em>thread</em><sub>0</sub>.
+     * \brief Computes an inclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes an array of consecutive input elements.  The inclusive CTA-wide \p aggregate of all inputs is computed for <em>thread</em><sub>0</sub>.
      *
      * The \p aggregate is undefined in threads other than <em>thread</em><sub>0</sub>.
      *
@@ -1328,16 +1348,16 @@ public:
     template <int ITEMS_PER_THREAD>
     static __device__ __forceinline__ void InclusiveSum(
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
-        T               (&input)[ITEMS_PER_THREAD],     ///< [in] Input
-        T               (&output)[ITEMS_PER_THREAD],    ///< [out] Output (may be aliased to \p input)
-        T               &aggregate)                     ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate
+        T               (&input)[ITEMS_PER_THREAD],     ///< [in] Calling thread's input items
+        T               (&output)[ITEMS_PER_THREAD],    ///< [out] Calling thread's output items (may be aliased to \p input)
+        T               &local_aggregate)               ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> CTA-wide aggregate reduction of input items
     {
         // Reduce consecutive thread items in registers
         Sum<T> scan_op;
         T thread_partial = ThreadReduce(input, scan_op);
 
         // Exclusive CTA-scan
-        ExclusiveSum(smem_storage, thread_partial, thread_partial, aggregate);
+        ExclusiveSum(smem_storage, thread_partial, thread_partial, local_aggregate);
 
         // Inclusive scan in registers with prefix
         ThreadScanInclusive(input, output, scan_op, thread_partial, (threadIdx.x != 0));
@@ -1345,18 +1365,21 @@ public:
 
 
     /**
-     * \brief Computes an inclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes one input element.  The \p cta_seed_prefix value from <em>thread</em><sub>0</sub> is applied to all scan outputs.  Also computes the CTA-wide \p aggregate of all inputs, inclusive of the \p cta_seed_prefix (valid in <em>thread</em><sub>0</sub>).
+     * \brief Computes an inclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes one input element.  The functor \p external_prefix is evaluated by <em>thread</em><sub>0</sub> to provide the preceding (or "base") value that logically prefixes the CTA's scan inputs.  The inclusive CTA-wide \p aggregate of all inputs is computed for <em>thread</em><sub>0</sub>.
      *
-     * The \p aggregate and \p cta_seed_prefix are undefined in threads other than <em>thread</em><sub>0</sub>.
+     * The \p aggregate and \p external_prefix are undefined in threads other than <em>thread</em><sub>0</sub>.
      *
      * \smemreuse
+     *
+     * \tparam CtaPrefixOp          <b>[inferred]</b> A call-back unary functor of the model </em>operator()(T local_local_aggregate)</em>
      */
+    template <typename CtaPrefixOp>
     static __device__ __forceinline__ void InclusiveSum(
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
-        T               input,                          ///< [in] Input
-        T               &output,                        ///< [out] Output (may be aliased to \p input)
-        T               &aggregate,                     ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate
-        CtaPrefixOp     &cta_seed_prefix)               ///< [in-out] <b>[<em>thread</em><sub>0</sub> only]</b> Unary functor of the model </em>operator()(T local_aggregate)</em> to be run <em>thread</em><sub>0</sub>.  This functor will be provided the local aggregate in return for a CTA-wide value to prefix all scan outputs with.  Can be stateful.
+        T               input,                          ///< [in] Calling thread's input item
+        T               &output,                        ///< [out] Calling thread's output item (may be aliased to \p input)
+        T               &local_aggregate,               ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> CTA-wide aggregate reduction of input items, exclusive of the \p external_prefix value
+        CtaPrefixOp     &external_prefix)               ///< [in-out] <b>[<em>thread</em><sub>0</sub> only]</b> A call-back unary functor of the model </em>operator()(T local_local_aggregate)</em> to be run <em>thread</em><sub>0</sub>.  When provided the CTA-wide aggregate of input items, this functor is expected to return the logical CTA-wide prefix to be applied during the scan operation.  Can be stateful.
     {
         if (WARP_SYNCHRONOUS)
         {
@@ -1365,8 +1388,8 @@ public:
                 smem_storage.warp_scan,
                 input,
                 output,
-                aggregate,
-                cta_seed_prefix);
+                local_aggregate,
+                external_prefix);
         }
         else
         {
@@ -1391,8 +1414,8 @@ public:
                     smem_storage.warp_scan,
                     raking_partial,
                     raking_partial,
-                    aggregate,
-                    cta_seed_prefix);
+                    local_aggregate,
+                    external_prefix);
 
                 // Exclusive raking downsweep scan
                 ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial);
@@ -1413,28 +1436,31 @@ public:
 
 
     /**
-     * \brief Computes an inclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes an array of consecutive input elements.  The \p cta_seed_prefix value from <em>thread</em><sub>0</sub> is applied to all scan outputs.  Also computes the CTA-wide \p aggregate of all inputs, inclusive of the \p cta_seed_prefix (valid in <em>thread</em><sub>0</sub>).
+     * \brief Computes an inclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes an array of consecutive input elements.  The functor \p external_prefix is evaluated by <em>thread</em><sub>0</sub> to provide the preceding (or "base") value that logically prefixes the CTA's scan inputs.  The inclusive CTA-wide \p aggregate of all inputs is computed for <em>thread</em><sub>0</sub>.
      *
-     * The \p aggregate and \p cta_seed_prefix are undefined in threads other than <em>thread</em><sub>0</sub>.
+     * The \p aggregate and \p external_prefix are undefined in threads other than <em>thread</em><sub>0</sub>.
      *
      * \smemreuse
      *
      * \tparam ITEMS_PER_THREAD     <b>[inferred]</b> The number of consecutive items partitioned onto each thread.
+     * \tparam CtaPrefixOp          <b>[inferred]</b> A call-back unary functor of the model </em>operator()(T local_local_aggregate)</em>
      */
-    template <int ITEMS_PER_THREAD>
+    template <
+        int ITEMS_PER_THREAD,
+        typename CtaPrefixOp>
     static __device__ __forceinline__ void InclusiveSum(
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
-        T               (&input)[ITEMS_PER_THREAD],     ///< [in] Input
-        T               (&output)[ITEMS_PER_THREAD],    ///< [out] Output (may be aliased to \p input)
-        T               &aggregate,                     ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> Total aggregate
-        CtaPrefixOp     &cta_seed_prefix)               ///< [in-out] <b>[<em>thread</em><sub>0</sub> only]</b> Unary functor of the model </em>operator()(T local_aggregate)</em> to be run <em>thread</em><sub>0</sub>.  This functor will be provided the local aggregate in return for a CTA-wide value to prefix all scan outputs with.  Can be stateful.
+        T               (&input)[ITEMS_PER_THREAD],     ///< [in] Calling thread's input items
+        T               (&output)[ITEMS_PER_THREAD],    ///< [out] Calling thread's output items (may be aliased to \p input)
+        T               &local_aggregate,               ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> CTA-wide aggregate reduction of input items, exclusive of the \p external_prefix value
+        CtaPrefixOp     &external_prefix)               ///< [in-out] <b>[<em>thread</em><sub>0</sub> only]</b> A call-back unary functor of the model </em>operator()(T local_local_aggregate)</em> to be run <em>thread</em><sub>0</sub>.  When provided the CTA-wide aggregate of input items, this functor is expected to return the logical CTA-wide prefix to be applied during the scan operation.  Can be stateful.
     {
         // Reduce consecutive thread items in registers
         Sum<T> scan_op;
         T thread_partial = ThreadReduce(input, scan_op);
 
         // Exclusive CTA-scan
-        ExclusiveSum(smem_storage, thread_partial, thread_partial, aggregate, cta_seed_prefix);
+        ExclusiveSum(smem_storage, thread_partial, thread_partial, local_aggregate, external_prefix);
 
         // Inclusive scan in registers with prefix
         ThreadScanInclusive(input, output, scan_op, thread_partial);
@@ -1448,11 +1474,11 @@ public:
      */
     static __device__ __forceinline__ void InclusiveSum(
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
-        T               input,                          ///< [in] Input
-        T               &output)                        ///< [out] Output (may be aliased to \p input)
+        T               input,                          ///< [in] Calling thread's input item
+        T               &output)                        ///< [out] Calling thread's output item (may be aliased to \p input)
     {
-        T aggregate;
-        InclusiveSum(smem_storage, input, output, aggregate);
+        T local_aggregate;
+        InclusiveSum(smem_storage, input, output, local_aggregate);
     }
 
 
@@ -1467,8 +1493,8 @@ public:
     template <int ITEMS_PER_THREAD>
     static __device__ __forceinline__ void InclusiveSum(
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
-        T               (&input)[ITEMS_PER_THREAD],     ///< [in] Input
-        T               (&output)[ITEMS_PER_THREAD])    ///< [out] Output (may be aliased to \p input)
+        T               (&input)[ITEMS_PER_THREAD],     ///< [in] Calling thread's input items
+        T               (&output)[ITEMS_PER_THREAD])    ///< [out] Calling thread's output items (may be aliased to \p input)
     {
         // Reduce consecutive thread items in registers
         Sum<T> scan_op;
