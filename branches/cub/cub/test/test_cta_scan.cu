@@ -57,6 +57,28 @@ enum TestMode
 // Test kernels
 //---------------------------------------------------------------------
 
+// Stateful prefix functor
+template <
+    typename T,
+    typename ScanOp>
+struct CtaPrefixOp
+{
+    T       prefix;
+    ScanOp  scan_op;
+
+    __device__ __forceinline__
+    CtaPrefixOp(T prefix, ScanOp scan_op) : prefix(prefix), scan_op(scan_op) {}
+
+    __device__ __forceinline__
+    T operator()(T local_aggregate)
+    {
+        T retval = prefix;
+        prefix = scan_op(prefix, local_aggregate);
+        return retval;
+    }
+};
+
+
 /**
  * Exclusive CtaScan test kernel.
  */
@@ -92,6 +114,7 @@ __global__ void CtaScanKernel(
 
 	// Test scan
 	T aggregate;
+    CtaPrefixOp<T, ScanOp> prefix_op(prefix, scan_op);
 	if (TEST_MODE == BASIC)
 	{
 		// Test basic warp scan
@@ -105,7 +128,7 @@ __global__ void CtaScanKernel(
 	else if (TEST_MODE == PREFIX_AGGREGATE)
 	{
 		// Test with warp-prefix and cumulative aggregate
-		CtaScan::ExclusiveScan(smem_storage, data, data, identity, scan_op, aggregate, prefix);
+		CtaScan::ExclusiveScan(smem_storage, data, data, identity, scan_op, aggregate, prefix_op);
 	}
 
 	// Record elapsed clocks
@@ -155,6 +178,7 @@ __global__ void CtaScanKernel(
 	clock_t start = clock();
 
 	T aggregate;
+    CtaPrefixOp<T, ScanOp> prefix_op(prefix, scan_op);
 	if (TEST_MODE == BASIC)
 	{
 		// Test basic warp scan
@@ -168,7 +192,7 @@ __global__ void CtaScanKernel(
 	else if (TEST_MODE == PREFIX_AGGREGATE)
 	{
 		// Test with warp-prefix and cumulative aggregate
-		CtaScan::InclusiveScan(smem_storage, data, data, scan_op, aggregate, prefix);
+		CtaScan::InclusiveScan(smem_storage, data, data, scan_op, aggregate, prefix_op);
 	}
 
 	// Record elapsed clocks
@@ -206,15 +230,17 @@ T Initialize(
 	T			*prefix)
 {
 	T inclusive = (prefix != NULL) ? *prefix : identity;
+    T aggregate = identity;
 
 	for (int i = 0; i < num_elements; ++i)
 	{
 		InitValue(gen_mode, h_in[i], i);
 		h_reference[i] = inclusive;
 		inclusive = scan_op(inclusive, h_in[i]);
+        aggregate = scan_op(aggregate, h_in[i]);
 	}
 
-	return inclusive;
+	return aggregate;
 }
 
 
@@ -234,6 +260,7 @@ T Initialize(
 	T			*prefix)
 {
 	T inclusive;
+    T aggregate;
 	for (int i = 0; i < num_elements; ++i)
 	{
 		InitValue(gen_mode, h_in[i], i);
@@ -242,15 +269,17 @@ T Initialize(
 			inclusive = (prefix != NULL) ?
 				scan_op(*prefix, h_in[0]) :
 				h_in[0];
+            aggregate = h_in[0];
 		}
 		else
 		{
 			inclusive = scan_op(inclusive, h_in[i]);
+            aggregate = scan_op(aggregate, h_in[i]);
 		}
 		h_reference[i] = inclusive;
 	}
 
-	return inclusive;
+	return aggregate;
 }
 
 
@@ -447,19 +476,6 @@ void Test()
 }
 
 
-/**
- * Run battery of tests for different CTA sizes
- */
-void Test()
-{
-	Test<17>();
-	Test<32>();
-	Test<63>();
-	Test<65>();
-	Test<96>();
-	Test<128>();
-}
-
 
 /**
  * Main
@@ -492,8 +508,15 @@ int main(int argc, char** argv)
     }
     else
     {
-        // Test CTA thread sizessizes
-        Test();
+
+        // Run battery of tests for different CTA sizes
+        Test<17>();
+        Test<32>();
+        Test<63>();
+        Test<65>();
+        Test<96>();
+        Test<128>();
+
     }
 
     return 0;

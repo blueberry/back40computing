@@ -57,6 +57,27 @@ enum TestMode
 // Test kernels
 //---------------------------------------------------------------------
 
+// Stateful prefix functor
+template <
+    typename T,
+    typename ScanOp>
+struct WarpPrefixOp
+{
+    T       prefix;
+    ScanOp  scan_op;
+
+    __device__ __forceinline__
+    WarpPrefixOp(T prefix, ScanOp scan_op) : prefix(prefix), scan_op(scan_op) {}
+
+    __device__ __forceinline__
+    T operator()(T local_aggregate)
+    {
+        T retval = prefix;
+        prefix = scan_op(prefix, local_aggregate);
+        return retval;
+    }
+};
+
 /**
  * Exclusive WarpScan test kernel.
  */
@@ -88,6 +109,7 @@ __global__ void WarpScanKernel(
 
 	// Test scan
 	T aggregate;
+	WarpPrefixOp<T, ScanOp> prefix_op(prefix, scan_op);
 	if (TEST_MODE == BASIC)
 	{
 		// Test basic warp scan
@@ -101,7 +123,7 @@ __global__ void WarpScanKernel(
 	else if (TEST_MODE == PREFIX_AGGREGATE)
 	{
 		// Test with warp-prefix and cumulative aggregate
-		WarpScan::ExclusiveScan(smem_storage, data, data, identity, scan_op, aggregate, prefix);
+		WarpScan::ExclusiveScan(smem_storage, data, data, identity, scan_op, aggregate, prefix_op);
 	}
 
 	// Record elapsed clocks
@@ -114,7 +136,7 @@ __global__ void WarpScanKernel(
 	if (threadIdx.x == 0)
 	{
 		d_out[LOGICAL_WARP_THREADS] = aggregate;
-        d_out[LOGICAL_WARP_THREADS + 1] = prefix;
+        d_out[LOGICAL_WARP_THREADS + 1] = prefix_op.prefix;
 	}
 }
 
@@ -150,6 +172,7 @@ __global__ void WarpScanKernel(
 
 	// Test scan
 	T aggregate;
+    WarpPrefixOp<T, Sum<T> > prefix_op(prefix, Sum<T>());
 	if (TEST_MODE == BASIC)
 	{
 		// Test basic warp scan
@@ -163,7 +186,7 @@ __global__ void WarpScanKernel(
 	else if (TEST_MODE == PREFIX_AGGREGATE)
 	{
 		// Test with warp-prefix and cumulative aggregate
-		WarpScan::ExclusiveSum(smem_storage, data, data, aggregate, prefix);
+		WarpScan::ExclusiveSum(smem_storage, data, data, aggregate, prefix_op);
 	}
 
 	// Record elapsed clocks
@@ -176,7 +199,7 @@ __global__ void WarpScanKernel(
     if (threadIdx.x == 0)
     {
         d_out[LOGICAL_WARP_THREADS] = aggregate;
-        d_out[LOGICAL_WARP_THREADS + 1] = prefix;
+        d_out[LOGICAL_WARP_THREADS + 1] = prefix_op.prefix;
     }
 }
 
@@ -210,6 +233,7 @@ __global__ void WarpScanKernel(
 	clock_t start = clock();
 
 	T aggregate;
+    WarpPrefixOp<T, ScanOp> prefix_op(prefix, scan_op);
 	if (TEST_MODE == BASIC)
 	{
 		// Test basic warp scan
@@ -223,7 +247,7 @@ __global__ void WarpScanKernel(
 	else if (TEST_MODE == PREFIX_AGGREGATE)
 	{
 		// Test with warp-prefix and cumulative aggregate
-		WarpScan::InclusiveScan(smem_storage, data, data, scan_op, aggregate, prefix);
+		WarpScan::InclusiveScan(smem_storage, data, data, scan_op, aggregate, prefix_op);
 	}
 
 	// Record elapsed clocks
@@ -236,7 +260,7 @@ __global__ void WarpScanKernel(
     if (threadIdx.x == 0)
     {
         d_out[LOGICAL_WARP_THREADS] = aggregate;
-        d_out[LOGICAL_WARP_THREADS + 1] = prefix;
+        d_out[LOGICAL_WARP_THREADS + 1] = prefix_op.prefix;
     }
 }
 
@@ -271,6 +295,7 @@ __global__ void WarpScanKernel(
 	clock_t start = clock();
 
 	T aggregate;
+    WarpPrefixOp<T, Sum<T> > prefix_op(prefix, Sum<T>() );
 	if (TEST_MODE == BASIC)
 	{
 		// Test basic warp scan
@@ -284,7 +309,7 @@ __global__ void WarpScanKernel(
 	else if (TEST_MODE == PREFIX_AGGREGATE)
 	{
 		// Test with warp-prefix and cumulative aggregate
-		WarpScan::InclusiveSum(smem_storage, data, data, aggregate, prefix);
+		WarpScan::InclusiveSum(smem_storage, data, data, aggregate, prefix_op);
 	}
 
 	// Record elapsed clocks
@@ -297,7 +322,7 @@ __global__ void WarpScanKernel(
     if (threadIdx.x == 0)
     {
         d_out[LOGICAL_WARP_THREADS] = aggregate;
-        d_out[LOGICAL_WARP_THREADS + 1] = prefix;
+        d_out[LOGICAL_WARP_THREADS + 1] = prefix_op.prefix;
     }
 }
 
@@ -323,15 +348,17 @@ T Initialize(
 	T			*prefix)
 {
 	T inclusive = (prefix != NULL) ? *prefix : identity;
+	T aggregate = identity;
 
 	for (int i = 0; i < num_elements; ++i)
 	{
 		InitValue(gen_mode, h_in[i], i);
 		h_reference[i] = inclusive;
 		inclusive = scan_op(inclusive, h_in[i]);
+		aggregate = scan_op(aggregate, h_in[i]);
 	}
 
-	return inclusive;
+	return aggregate;
 }
 
 
@@ -351,6 +378,7 @@ T Initialize(
 	T			*prefix)
 {
 	T inclusive;
+	T aggregate;
 	for (int i = 0; i < num_elements; ++i)
 	{
 		InitValue(gen_mode, h_in[i], i);
@@ -359,15 +387,17 @@ T Initialize(
 			inclusive = (prefix != NULL) ?
 				scan_op(*prefix, h_in[0]) :
 				h_in[0];
+			aggregate = h_in[0];
 		}
 		else
 		{
 			inclusive = scan_op(inclusive, h_in[i]);
+	        aggregate = scan_op(aggregate, h_in[i]);
 		}
 		h_reference[i] = inclusive;
 	}
 
-	return inclusive;
+	return aggregate;
 }
 
 
@@ -559,7 +589,6 @@ int main(int argc, char** argv)
     {
         // Quick exclusive test
         Test<32, PREFIX_AGGREGATE>(UNIFORM, Sum<int>(), (int) 0, (int) 99, CUB_TYPE_STRING(int));
-//        Test<32, PREFIX_AGGREGATE>(UNIFORM, Max<int>(), (int) 0, (int) 99, CUB_TYPE_STRING(int));
     }
     else
     {
