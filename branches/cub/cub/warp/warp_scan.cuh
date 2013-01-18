@@ -1110,7 +1110,7 @@ public:
 
 
     /**
-     * \brief Computes an exclusive prefix scan using the specified binary scan functor in each logical warp.  Because no identity value is supplied, the \p output computed for thread-thread-lane<sub>0</sub> is invalid.  The \p warp_prefix_op value from thread-thread-lane<sub>0</sub> is applied to all scan outputs.  Also computes the warp-wide \p aggregate of all inputs for thread-thread-lane<sub>0</sub>.  The \p warp_prefix_op is further updated by the value of \p aggregate.
+     * \brief Computes an exclusive prefix scan using the specified binary scan functor in each logical warp.  The \p warp_prefix_op value from thread-thread-lane<sub>0</sub> is applied to all scan outputs.  Also computes the warp-wide \p aggregate of all inputs for thread-thread-lane<sub>0</sub>.  The \p warp_prefix_op is further updated by the value of \p aggregate.
      *
      * The \p aggregate and \p warp_prefix_op are undefined in threads other than thread-lane<sub>0</sub>.
      *
@@ -1142,8 +1142,15 @@ public:
         }
         prefix = WarpScanInternal<POLICY>::Broadcast(smem_storage, prefix, 0);
 
-        // Update output
-        output = scan_op(prefix, output);
+        // Update output with prefix
+        if (lane_id == 0)
+        {
+            output = prefix;
+        }
+        else
+        {
+            output = scan_op(prefix, output);
+        }
     }
 
     //@}

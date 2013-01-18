@@ -209,6 +209,136 @@ __global__ void CtaScanKernel(
 }
 
 
+/**
+ * Exclusive CtaScan test kernel (sum)
+ */
+template <
+    int         CTA_THREADS,
+    int         ITEMS_PER_THREAD,
+    TestMode    TEST_MODE,
+    typename    T>
+__global__ void CtaScanKernel(
+    T                                               *d_in,
+    T                                               *d_out,
+    Sum<T>,
+    T,
+    T                                               prefix,
+    clock_t                                         *d_elapsed,
+    typename EnableIf<Traits<T>::PRIMITIVE>::Type   *dummy = NULL)
+{
+    const int TILE_SIZE = CTA_THREADS * ITEMS_PER_THREAD;
+
+    // Cooperative warp-scan utility type (1 warp)
+    typedef CtaScan<T, CTA_THREADS> CtaScan;
+
+    // Shared memory
+    __shared__ typename CtaScan::SmemStorage smem_storage;
+
+    // Per-thread tile data
+    T data[ITEMS_PER_THREAD];
+    CtaLoadDirect(data, d_in, 0);
+
+    // Record elapsed clocks
+    clock_t start = clock();
+
+    // Test scan
+    T aggregate;
+    CtaPrefixOp<T, Sum<T> > prefix_op(prefix, Sum<T>());
+    if (TEST_MODE == BASIC)
+    {
+        // Test basic warp scan
+        CtaScan::ExclusiveSum(smem_storage, data, data);
+    }
+    else if (TEST_MODE == AGGREGATE)
+    {
+        // Test with cumulative aggregate
+        CtaScan::ExclusiveSum(smem_storage, data, data, aggregate);
+    }
+    else if (TEST_MODE == PREFIX_AGGREGATE)
+    {
+        // Test with warp-prefix and cumulative aggregate
+        CtaScan::ExclusiveSum(smem_storage, data, data, aggregate, prefix_op);
+    }
+
+    // Record elapsed clocks
+    *d_elapsed = clock() - start;
+
+    // Store output
+    CtaStoreDirect(data, d_out, 0);
+
+    // Store aggregate
+    if (threadIdx.x == 0)
+    {
+        d_out[TILE_SIZE] = aggregate;
+    }
+}
+
+
+/**
+ * Inclusive CtaScan test kernel (sum)
+ */
+template <
+    int         CTA_THREADS,
+    int         ITEMS_PER_THREAD,
+    TestMode    TEST_MODE,
+    typename    T>
+__global__ void CtaScanKernel(
+    T                                               *d_in,
+    T                                               *d_out,
+    Sum<T>,
+    NullType,
+    T                                               prefix,
+    clock_t                                         *d_elapsed,
+    typename EnableIf<Traits<T>::PRIMITIVE>::Type   *dummy = NULL)
+{
+    const int TILE_SIZE = CTA_THREADS * ITEMS_PER_THREAD;
+
+    // Cooperative warp-scan utility type (1 warp)
+    typedef CtaScan<T, CTA_THREADS> CtaScan;
+
+    // Shared memory
+    __shared__ typename CtaScan::SmemStorage smem_storage;
+
+    // Per-thread tile data
+    T data[ITEMS_PER_THREAD];
+    CtaLoadDirect(data, d_in, 0);
+
+    // Record elapsed clocks
+    clock_t start = clock();
+
+    T aggregate;
+    CtaPrefixOp<T, Sum<T> > prefix_op(prefix, Sum<T>());
+    if (TEST_MODE == BASIC)
+    {
+        // Test basic warp scan
+        CtaScan::InclusiveSum(smem_storage, data, data);
+    }
+    else if (TEST_MODE == AGGREGATE)
+    {
+        // Test with cumulative aggregate
+        CtaScan::InclusiveSum(smem_storage, data, data, aggregate);
+    }
+    else if (TEST_MODE == PREFIX_AGGREGATE)
+    {
+        // Test with warp-prefix and cumulative aggregate
+        CtaScan::InclusiveSum(smem_storage, data, data, aggregate, prefix_op);
+    }
+
+    // Record elapsed clocks
+    *d_elapsed = clock() - start;
+
+    // Store output
+    CtaStoreDirect(data, d_out, 0);
+
+    // Store aggregate
+    if (threadIdx.x == 0)
+    {
+        d_out[TILE_SIZE] = aggregate;
+    }
+}
+
+
+
 //---------------------------------------------------------------------
 // Host utility subroutines
 //---------------------------------------------------------------------
@@ -505,6 +635,10 @@ int main(int argc, char** argv)
     {
         // Quick exclusive test
     	Test<128, 4, BASIC>(UNIFORM, Sum<int>(), int(0), int(10), CUB_TYPE_STRING(Sum<int));
+/*
+        Foo prefix = Foo::MakeFoo(17, 21, 32, 85);
+        Test<128, 2, PREFIX_AGGREGATE>(SEQ_INC, Sum<Foo>(), NullType(), prefix, CUB_TYPE_STRING(Sum<Foo>));
+*/
     }
     else
     {
@@ -512,7 +646,7 @@ int main(int argc, char** argv)
         // Run battery of tests for different CTA sizes
         Test<17>();
         Test<32>();
-        Test<63>();
+        Test<62>();
         Test<65>();
         Test<96>();
         Test<128>();

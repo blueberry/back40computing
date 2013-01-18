@@ -274,7 +274,16 @@ public:
             {
                 // Raking upsweep reduction in grid
                 T *raking_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
-                T raking_partial = ThreadReduce<RAKING_LENGTH>(raking_ptr, scan_op);
+                T raking_partial = raking_ptr[0];
+
+                #pragma unroll
+                for (int i = 1; i < RAKING_LENGTH; i++)
+                {
+                    if ((CtaRakingGrid::UNGUARDED) || (((threadIdx.x * RAKING_LENGTH) + i) < CTA_THREADS))
+                    {
+                        raking_partial = scan_op(raking_partial, raking_ptr[i]);
+                    }
+                }
 
                 // Exclusive warp synchronous scan
                 WarpScan::ExclusiveScan(
@@ -287,12 +296,6 @@ public:
 
                 // Exclusive raking downsweep scan
                 ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial);
-
-                if (!CtaRakingGrid::UNGUARDED)
-                {
-                    // CTA size isn't a multiple of warp size, so grab aggregate from the appropriate raking cell
-                    local_aggregate = *CtaRakingGrid::PlacementPtr(smem_storage.raking_grid, 0, CTA_THREADS);
-                }
             }
 
             __syncthreads();
@@ -383,7 +386,16 @@ public:
             {
                 // Raking upsweep reduction in grid
                 T *raking_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
-                T raking_partial = ThreadReduce<RAKING_LENGTH>(raking_ptr, scan_op);
+                T raking_partial = raking_ptr[0];
+
+                #pragma unroll
+                for (int i = 1; i < RAKING_LENGTH; i++)
+                {
+                    if ((CtaRakingGrid::UNGUARDED) || (((threadIdx.x * RAKING_LENGTH) + i) < CTA_THREADS))
+                    {
+                        raking_partial = scan_op(raking_partial, raking_ptr[i]);
+                    }
+                }
 
                 // Exclusive warp synchronous scan
                 WarpScan::ExclusiveScan(
@@ -397,12 +409,6 @@ public:
 
                 // Exclusive raking downsweep scan
                 ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial);
-
-                if (!CtaRakingGrid::UNGUARDED)
-                {
-                    // CTA size isn't a multiple of warp size, so grab aggregate from the appropriate raking cell
-                    local_aggregate = *CtaRakingGrid::PlacementPtr(smem_storage.raking_grid, 0, CTA_THREADS);
-                }
             }
 
             __syncthreads();
@@ -545,7 +551,16 @@ public:
             {
                 // Raking upsweep reduction in grid
                 T *raking_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
-                T raking_partial = ThreadReduce<RAKING_LENGTH>(raking_ptr, scan_op);
+                T raking_partial = raking_ptr[0];
+
+                #pragma unroll
+                for (int i = 1; i < RAKING_LENGTH; i++)
+                {
+                    if ((CtaRakingGrid::UNGUARDED) || (((threadIdx.x * RAKING_LENGTH) + i) < CTA_THREADS))
+                    {
+                        raking_partial = scan_op(raking_partial, raking_ptr[i]);
+                    }
+                }
 
                 // Exclusive warp synchronous scan
                 WarpScan::ExclusiveScan(
@@ -557,12 +572,6 @@ public:
 
                 // Exclusive raking downsweep scan
                 ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial, (threadIdx.x != 0));
-
-                if (!CtaRakingGrid::UNGUARDED)
-                {
-                    // CTA size isn't a multiple of warp size, so grab aggregate from the appropriate raking cell
-                    local_aggregate = *CtaRakingGrid::PlacementPtr(smem_storage.raking_grid, 0, CTA_THREADS);
-                }
             }
 
             __syncthreads();
@@ -587,9 +596,9 @@ public:
         int             ITEMS_PER_THREAD,
         typename         ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
-        SmemStorage        &smem_storage,               ///< [in] Shared reference to opaque SmemStorage layout
-        T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Calling thread's input items
-        T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Calling thread's output items (may be aliased to \p input)
+        SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
+        T               (&input)[ITEMS_PER_THREAD],     ///< [in] Calling thread's input items
+        T               (&output)[ITEMS_PER_THREAD],    ///< [out] Calling thread's output items (may be aliased to \p input)
         ScanOp          scan_op,                        ///< [in] Binary scan operator
         T               &local_aggregate)               ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> CTA-wide aggregate reduction of input items
     {
@@ -605,7 +614,7 @@ public:
 
 
     /**
-     * \brief Computes an exclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes one input element.  The functor \p cta_prefix_op is evaluated by <em>thread</em><sub>0</sub> to provide the preceding (or "base") value that logically prefixes the CTA's scan inputs.  The inclusive CTA-wide \p aggregate of all inputs is computed for <em>thread</em><sub>0</sub>.  With no identity value, the output computed for <em>thread</em><sub>0</sub> is invalid.
+     * \brief Computes an exclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes one input element.  The functor \p cta_prefix_op is evaluated by <em>thread</em><sub>0</sub> to provide the preceding (or "base") value that logically prefixes the CTA's scan inputs.  The inclusive CTA-wide \p aggregate of all inputs is computed for <em>thread</em><sub>0</sub>.
      *
      * The \p aggregate and \p cta_prefix_op are undefined in threads other than <em>thread</em><sub>0</sub>.
      *
@@ -649,7 +658,16 @@ public:
             {
                 // Raking upsweep reduction in grid
                 T *raking_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
-                T raking_partial = ThreadReduce<RAKING_LENGTH>(raking_ptr, scan_op);
+                T raking_partial = raking_ptr[0];
+
+                #pragma unroll
+                for (int i = 1; i < RAKING_LENGTH; i++)
+                {
+                    if ((CtaRakingGrid::UNGUARDED) || (((threadIdx.x * RAKING_LENGTH) + i) < CTA_THREADS))
+                    {
+                        raking_partial = scan_op(raking_partial, raking_ptr[i]);
+                    }
+                }
 
                 // Exclusive warp synchronous scan
                 WarpScan::ExclusiveScan(
@@ -662,12 +680,6 @@ public:
 
                 // Exclusive raking downsweep scan
                 ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial);
-
-                if (!CtaRakingGrid::UNGUARDED)
-                {
-                    // CTA size isn't a multiple of warp size, so grab aggregate from the appropriate raking cell
-                    local_aggregate = *CtaRakingGrid::PlacementPtr(smem_storage.raking_grid, 0, CTA_THREADS);
-                }
             }
 
             __syncthreads();
@@ -679,7 +691,7 @@ public:
 
 
     /**
-     * \brief Computes an exclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes an array of consecutive input elements.  The functor \p cta_prefix_op is evaluated by <em>thread</em><sub>0</sub> to provide the preceding (or "base") value that logically prefixes the CTA's scan inputs.  The inclusive CTA-wide \p aggregate of all inputs is computed for <em>thread</em><sub>0</sub>.  With no identity value, the output computed for <em>thread</em><sub>0</sub> is invalid.
+     * \brief Computes an exclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes an array of consecutive input elements.  The functor \p cta_prefix_op is evaluated by <em>thread</em><sub>0</sub> to provide the preceding (or "base") value that logically prefixes the CTA's scan inputs.  The inclusive CTA-wide \p aggregate of all inputs is computed for <em>thread</em><sub>0</sub>.
      *
      * The \p aggregate and \p cta_prefix_op are undefined in threads other than <em>thread</em><sub>0</sub>.
      *
@@ -804,7 +816,16 @@ public:
             {
                 // Raking upsweep reduction in grid
                 T *raking_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
-                T raking_partial = ThreadReduce<RAKING_LENGTH>(raking_ptr, scan_op);
+                T raking_partial = raking_ptr[0];
+
+                #pragma unroll
+                for (int i = 1; i < RAKING_LENGTH; i++)
+                {
+                    if ((CtaRakingGrid::UNGUARDED) || (((threadIdx.x * RAKING_LENGTH) + i) < CTA_THREADS))
+                    {
+                        raking_partial = scan_op(raking_partial, raking_ptr[i]);
+                    }
+                }
 
                 // Exclusive warp synchronous scan
                 WarpScan::ExclusiveSum(
@@ -814,13 +835,7 @@ public:
                     local_aggregate);
 
                 // Exclusive raking downsweep scan
-                ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial, (threadIdx.x != 0));
-
-                if (!CtaRakingGrid::UNGUARDED)
-                {
-                    // CTA size isn't a multiple of warp size, so grab aggregate from the appropriate raking cell
-                    local_aggregate = *CtaRakingGrid::PlacementPtr(smem_storage.raking_grid, 0, CTA_THREADS);
-                }
+                ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial);
             }
 
             __syncthreads();
@@ -855,7 +870,7 @@ public:
         ExclusiveSum(smem_storage, thread_partial, thread_partial, local_aggregate);
 
         // Exclusive scan in registers with prefix
-        ThreadScanExclusive(input, output, scan_op, thread_partial, (threadIdx.x != 0));
+        ThreadScanExclusive(input, output, scan_op, thread_partial);
     }
 
 
@@ -902,7 +917,16 @@ public:
             {
                 // Raking upsweep reduction in grid
                 T *raking_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
-                T raking_partial = ThreadReduce<RAKING_LENGTH>(raking_ptr, scan_op);
+                T raking_partial = raking_ptr[0];
+
+                #pragma unroll
+                for (int i = 1; i < RAKING_LENGTH; i++)
+                {
+                    if ((CtaRakingGrid::UNGUARDED) || (((threadIdx.x * RAKING_LENGTH) + i) < CTA_THREADS))
+                    {
+                        raking_partial = scan_op(raking_partial, raking_ptr[i]);
+                    }
+                }
 
                 // Exclusive warp synchronous scan
                 WarpScan::ExclusiveSum(
@@ -914,12 +938,6 @@ public:
 
                 // Exclusive raking downsweep scan
                 ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial);
-
-                if (!CtaRakingGrid::UNGUARDED)
-                {
-                    // CTA size isn't a multiple of warp size, so grab aggregate from the appropriate raking cell
-                    local_aggregate = *CtaRakingGrid::PlacementPtr(smem_storage.raking_grid, 0, CTA_THREADS);
-                }
             }
 
             __syncthreads();
@@ -998,7 +1016,7 @@ public:
         ExclusiveSum(smem_storage, thread_partial, thread_partial);
 
         // Exclusive scan in registers with prefix
-        ThreadScanExclusive(input, output, scan_op, thread_partial, (threadIdx.x != 0));
+        ThreadScanExclusive(input, output, scan_op, thread_partial);
     }
 
 
@@ -1049,7 +1067,16 @@ public:
             {
                 // Raking upsweep reduction in grid
                 T *raking_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
-                T raking_partial = ThreadReduce<RAKING_LENGTH>(raking_ptr, scan_op);
+                T raking_partial = raking_ptr[0];
+
+                #pragma unroll
+                for (int i = 1; i < RAKING_LENGTH; i++)
+                {
+                    if ((CtaRakingGrid::UNGUARDED) || (((threadIdx.x * RAKING_LENGTH) + i) < CTA_THREADS))
+                    {
+                        raking_partial = scan_op(raking_partial, raking_ptr[i]);
+                    }
+                }
 
                 // Exclusive warp synchronous scan
                 WarpScan::ExclusiveScan(
@@ -1061,12 +1088,6 @@ public:
 
                 // Exclusive raking downsweep scan
                 ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial, (threadIdx.x != 0));
-
-                if (!CtaRakingGrid::UNGUARDED)
-                {
-                    // CTA size isn't a multiple of warp size, so grab aggregate from the appropriate raking cell
-                    local_aggregate = *CtaRakingGrid::PlacementPtr(smem_storage.raking_grid, 0, CTA_THREADS);
-                }
             }
 
             __syncthreads();
@@ -1153,7 +1174,16 @@ public:
             {
                 // Raking upsweep reduction in grid
                 T *raking_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
-                T raking_partial = ThreadReduce<RAKING_LENGTH>(raking_ptr, scan_op);
+                T raking_partial = raking_ptr[0];
+
+                #pragma unroll
+                for (int i = 1; i < RAKING_LENGTH; i++)
+                {
+                    if ((CtaRakingGrid::UNGUARDED) || (((threadIdx.x * RAKING_LENGTH) + i) < CTA_THREADS))
+                    {
+                        raking_partial = scan_op(raking_partial, raking_ptr[i]);
+                    }
+                }
 
                 // Warp synchronous scan
                 WarpScan::ExclusiveScan(
@@ -1166,12 +1196,6 @@ public:
 
                 // Exclusive raking downsweep scan
                 ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial);
-
-                if (!CtaRakingGrid::UNGUARDED)
-                {
-                    // CTA size isn't a multiple of warp size, so grab aggregate from the appropriate raking cell
-                    local_aggregate = *CtaRakingGrid::PlacementPtr(smem_storage.raking_grid, 0, CTA_THREADS);
-                }
             }
 
             __syncthreads();
@@ -1308,7 +1332,16 @@ public:
             {
                 // Raking upsweep reduction in grid
                 T *raking_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
-                T raking_partial = ThreadReduce<RAKING_LENGTH>(raking_ptr, scan_op);
+                T raking_partial = raking_ptr[0];
+
+                #pragma unroll
+                for (int i = 1; i < RAKING_LENGTH; i++)
+                {
+                    if ((CtaRakingGrid::UNGUARDED) || (((threadIdx.x * RAKING_LENGTH) + i) < CTA_THREADS))
+                    {
+                        raking_partial = scan_op(raking_partial, raking_ptr[i]);
+                    }
+                }
 
                 // Exclusive warp synchronous scan
                 WarpScan::ExclusiveSum(
@@ -1319,12 +1352,6 @@ public:
 
                 // Exclusive raking downsweep scan
                 ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial, (threadIdx.x != 0));
-
-                if (!CtaRakingGrid::UNGUARDED)
-                {
-                    // CTA size isn't a multiple of warp size, so grab aggregate from the appropriate raking cell
-                    local_aggregate = *CtaRakingGrid::PlacementPtr(smem_storage.raking_grid, 0, CTA_THREADS);
-                }
             }
 
             __syncthreads();
@@ -1407,7 +1434,16 @@ public:
             {
                 // Raking upsweep reduction in grid
                 T *raking_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
-                T raking_partial = ThreadReduce<RAKING_LENGTH>(raking_ptr, scan_op);
+                T raking_partial = raking_ptr[0];
+
+                #pragma unroll
+                for (int i = 1; i < RAKING_LENGTH; i++)
+                {
+                    if ((CtaRakingGrid::UNGUARDED) || (((threadIdx.x * RAKING_LENGTH) + i) < CTA_THREADS))
+                    {
+                        raking_partial = scan_op(raking_partial, raking_ptr[i]);
+                    }
+                }
 
                 // Warp synchronous scan
                 WarpScan::ExclusiveSum(
@@ -1419,12 +1455,6 @@ public:
 
                 // Exclusive raking downsweep scan
                 ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial);
-
-                if (!CtaRakingGrid::UNGUARDED)
-                {
-                    // CTA size isn't a multiple of warp size, so grab aggregate from the appropriate raking cell
-                    local_aggregate = *CtaRakingGrid::PlacementPtr(smem_storage.raking_grid, 0, CTA_THREADS);
-                }
             }
 
             __syncthreads();

@@ -59,13 +59,16 @@ struct CtaRakingGrid
 		// The total number of elements that need to be cooperatively reduced
 		SHARED_ELEMENTS = CTA_THREADS * CTA_STRIPS,
 
-		// Number of warp-synchronous raking threads
-		RAKING_THREADS = CUB_MIN(CTA_THREADS, DeviceProps::WARP_THREADS),
+		// Maximum number of warp-synchronous raking threads
+		MAX_RAKING_THREADS = CUB_MIN(CTA_THREADS, DeviceProps::WARP_THREADS),
 
 		// Number of raking elements per warp-synchronous raking thread (rounded up)
-		RAKING_LENGTH = (SHARED_ELEMENTS + RAKING_THREADS - 1) / RAKING_THREADS,
+		RAKING_LENGTH = (SHARED_ELEMENTS + MAX_RAKING_THREADS - 1) / MAX_RAKING_THREADS,
 
-		// Total number of raking elements in the grid
+        // Number of warp-synchronous raking threads
+        RAKING_THREADS = (SHARED_ELEMENTS + RAKING_LENGTH - 1) / RAKING_LENGTH,
+
+        // Total number of raking elements in the grid
 		RAKING_ELEMENTS = RAKING_THREADS * RAKING_LENGTH,
 
 		// Number of bytes per shared memory segment
