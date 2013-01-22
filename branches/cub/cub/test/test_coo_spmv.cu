@@ -261,42 +261,13 @@ struct PartialSum
 template <typename VertexId, typename Value>
 struct ScanProgress
 {
-    int                             edge;
-    PartialSum<VertexId, Value>     aggregate;
+    /// The offset of the first waiting CTA
+    int active_offset;
+
+    /// The inter-CTA aggregate so far
+    PartialSum<VertexId, Value> aggregate;
 };
 
-
-
-/// Reduce-by-row scan operator
-struct ScanOp
-{
-    template <typename VertexId, typename Value>
-    __device__ __forceinline__ PartialSum<VertexId, Value> operator()(
-        const PartialSum<VertexId, Value> &first,
-        const PartialSum<VertexId, Value> &second)
-    {
-        PartialSum<VertexId, Value> retval;
-        retval.partial = (second.row != first.row) ?
-                second.partial :
-                first.partial + second.partial;
-        retval.row = second.row;
-
-        return retval;
-    }
-};
-
-
-/// Returns true if row_b is the start of a new row
-struct NewRowOp
-{
-    template <typename VertexId>
-    __device__ __forceinline__ bool operator()(
-        const VertexId& row_a,
-        const VertexId& row_b)
-    {
-        return (row_a != row_b);
-    }
-};
 
 
 //---------------------------------------------------------------------
@@ -366,7 +337,7 @@ struct SpmvCta
     // Dot product partial sum type
     typedef PartialSum<VertexId, Value>                             PartialSum;
 
-    // Parameterize cooperative CUB types for use in the current problem context
+    // Parameterized CUB types for use in the current problem context
     typedef CtaScan<PartialSum, CTA_THREADS>                        CtaScan;
     typedef CtaExchange<PartialSum, CTA_THREADS, ITEMS_PER_THREAD>  CtaExchange;
     typedef CtaDiscontinuity<HeadFlag, CTA_THREADS>                 CtaDiscontinuity;
@@ -380,10 +351,95 @@ struct SpmvCta
             typename CtaExchange::SmemStorage       exchange;           // Smem needed for striped->blocked transpose
             typename CtaDiscontinuity::SmemStorage  discontinuity;      // Smem needed for head-flagging
         };
-
-        PartialSum                                  prev_aggregate;     // Aggregate from previous CTA
     };
 
+
+    /// Reduce-by-row scan operator
+    struct ScanOp
+    {
+        template <typename VertexId, typename Value>
+        __device__ __forceinline__ PartialSum operator()(
+            const PartialSum &first,
+            const PartialSum &second)
+        {
+            PartialSum retval;
+
+            retval.partial = (second.row != first.row) ?
+                    second.partial :
+                    first.partial + second.partial;
+
+            retval.row = second.row;
+            return retval;
+        }
+    };
+
+    // Callback functor for providing CtaScan with the CTA-wide prefix computed by the preceding CTA
+    struct CtaPrefixOp
+    {
+        ScanProgress<VertexId, Value>       *d_scan_progress;
+        int                                 cta_offset;
+        PartialSum                          identity;
+        PartialSum                          prev_aggregate;
+        PartialSum                          aggregate;
+
+
+        // Constructor
+        __device__ __forceinline__ CtaPrefixOp(
+            ScanProgress<VertexId, Value>   *d_scan_progress,
+            int                             cta_offset,
+            PartialSum                      identity) :
+                cta_offset(cta_offset),
+                d_scan_progress(d_scan_progress),
+                identity(identity)
+        {}
+
+
+        // CTA-wide prefix functor (called by thread-0)
+        __device__ __forceinline__ PartialSum operator()(const PartialSum &local_aggregate)
+        {
+            // Get aggregate from prior CTA
+            if (cta_offset == 0)
+            {
+                // The first tile has no prior aggregate: use identity
+                prev_aggregate = identity;
+            }
+            else
+            {
+                // Keep loading prior CTA's aggregate until valid
+                int active_offset;
+                do {
+                    active_offset = ThreadLoad<PTX_LOAD_CG>(&d_scan_progress->active_offset);
+                }
+                while (active_offset != cta_offset);
+
+                // It's our turn: load the inter-CTA aggregate up to this point
+                prev_aggregate = ThreadLoad<PTX_LOAD_CG>(&d_scan_progress->aggregate);
+            }
+
+            // Write updated CTA-wide aggregate and signal to subsequent CTA that value is ready
+            aggregate = scan_op(prev_aggregate, local_aggregate);
+            ThreadStore<PTX_STORE_CG>(&d_scan_progress->aggregate, aggregate);
+            __threadfence_block();
+            ThreadStore<PTX_STORE_CG>(&d_scan_progress->active_offset, cta_offset + TILE_ITEMS);
+
+            // Return CTA's prefix
+            return prev_aggregate;
+        }
+    };
+
+
+    /// Functor for detecting row discontinuities.
+    struct NewRowOp
+    {
+        /// Returns true if row_b is the start of a new row
+        template <typename VertexId>
+        __device__ __forceinline__ bool operator()(
+            const VertexId& row_a,
+            const VertexId& row_b)
+        {
+            return (row_a != row_b);
+        }
+    };
 
     //---------------------------------------------------------------------
     // Operations
@@ -392,7 +448,7 @@ struct SpmvCta
     __device__ __forceinline__
     static void ProcessTile(
         SmemStorage                     &s_storage,
-        ScanProgress<VertexId, Value>*  d_scan_progress,
+        ScanProgress<VertexId, Value>   *d_scan_progress,
         VertexId*                       d_rows,
         VertexId*                       d_columns,
         Value*                          d_values,
@@ -411,7 +467,7 @@ struct SpmvCta
         // Load a CTA-striped tile of A (sparse row-ids, column-ids, and values)
         if (guarded_items)
         {
-            // Last tile has guarded loads.  Extend the coordinates of the last
+            // This is a partial-tile (e.g., the last tile of input).  Extend the coordinates of the last
             // vertex for out-of-bound items, but zero-valued
             VertexId last_row = d_rows[num_edges - 1];
             VertexId last_column = d_columns[num_edges - 1];
@@ -429,6 +485,7 @@ struct SpmvCta
         }
 
         // Fence to prevent hoisting any dependent code below into the loads above
+        // Mooch
         __threadfence_block();
 
         // Load the referenced values from x and compute dot product partial_sums
@@ -447,8 +504,8 @@ struct SpmvCta
         __syncthreads();
 
         // Save a copy of the original rows.  We will use them to compute the row head flags
-        // later.  (After the exclusive scan, the row fields in partial_sums will
-        // be shifted by one element.)
+        // later.  (After the scan, the row fields in partial_sums will
+        // be shifted by one element because the scan is exclusive in nature.)
         #pragma unroll
         for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
         {
@@ -456,81 +513,33 @@ struct SpmvCta
         }
 
         // Compute exclusive scan of partial_sums
-        VertexId        first_row = d_rows[cta_offset];
-        ScanOp          scan_op;                          // Reduce-by-row scan operator
-        PartialSum      aggregate;                        // CTA-wide aggregate in thread0
-        PartialSum      identity = {0.0, first_row};      // Zero-valued identity (with row-id of first item)
+        VertexId        first_row = d_rows[cta_offset];         // The vertex id of the first row encountered by this CTA
+        ScanOp          scan_op;                                // Reduce-by-row scan operator
+        PartialSum      local_aggregate;                        // CTA-wide aggregate in thread0 (unused)
+        PartialSum      identity = {0.0, first_row};            // Zero-valued identity (with row-id of first item)
+        CtaPrefixOp     prefix_op(d_scan_progress, cta_offset, identity);
 
         CtaScan::ExclusiveScan(
             s_storage.scan,
             partial_sums,
-            partial_sums,           // Out
+            partial_sums,           // (Out)
             identity,
             scan_op,
-            aggregate);             // Out
-
-        // Thread0 communicates the CTA-wide aggregate with other CTAs
-        if (threadIdx.x == 0)
-        {
-            // Get aggregate from prior CTA
-            PartialSum prev_aggregate;
-            if (blockIdx.x == 0)
-            {
-                // First tile has no prior aggregate
-                prev_aggregate.row = first_row;
-                prev_aggregate.partial = 0.0;
-            }
-            else
-            {
-                // Keep loading prior CTA's aggregate until valid
-                int edge;
-                do {
-                    edge = ThreadLoad<PTX_LOAD_CG>(&d_scan_progress->edge);
-                }
-                while (edge != cta_offset);
-
-                prev_aggregate = ThreadLoad<PTX_LOAD_CG>(&d_scan_progress->aggregate);
-            }
-
-            // Share prev_aggregate with other threads
-            s_storage.prev_aggregate = prev_aggregate;
-
-            // Apply prev_aggregate to our local aggregate
-            aggregate = scan_op(prev_aggregate, aggregate);
-
-            // Write updated CTA-wide aggregate
-            ThreadStore<PTX_STORE_CG>(&d_scan_progress->aggregate, aggregate);
-
-            // Signal to subsequent CTA that value is ready
-            __threadfence_block();
-            ThreadStore<PTX_STORE_CG>(&d_scan_progress->edge, cta_offset + TILE_ITEMS);
-        }
+            local_aggregate,        // (Out)
+            prefix_op);             // (In-out)
 
         // Barrier for smem reuse and coherence
         __syncthreads();
-
-        // Incorporate previous CTA's aggregate into partial_sums
-        #pragma unroll
-        for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
-        {
-            partial_sums[ITEM] = scan_op(s_storage.prev_aggregate, partial_sums[ITEM]);
-        }
 
         // Flag row heads using saved row ids
         CtaDiscontinuity::Flag(
             s_storage.discontinuity,
             rows,                           // Original row ids
-            s_storage.prev_aggregate.row,   // Last row id from previous CTA
-            NewRowOp(),
-            head_flags);                    // (out) Head flags
+            prefix_op.prev_aggregate.row,   // Last row id from previous CTA
+            NewRowOp(),                     // Functor for detecting start of new rows
+            head_flags);                    // (Out) Head flags
 
-        // First item of first thread should be the previous CTA's aggregate (and not identity)
-        if (threadIdx.x == 0)
-        {
-            partial_sums[0] = s_storage.prev_aggregate;
-        }
-
-        // Scatter dot products if a row head of a valid row
+        // Scatter the dot products if they are the head of a valid row
         #pragma unroll
         for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
         {
@@ -540,10 +549,10 @@ struct SpmvCta
             }
         }
 
-        // Last tile scatters the final value (if it has a valid row id), which is the aggregate
-        if ((blockIdx.x == gridDim.x - 1) && (threadIdx.x == 0) && (aggregate.row >= 0))
+        // Last tile scatters its aggregate value (if it has a valid row id) as the last ouput
+        if ((cta_offset + TILE_ITEMS >= num_edges) && (threadIdx.x == 0) && (prefix_op.aggregate.row >= 0))
         {
-            d_result[aggregate.row] = aggregate.partial;
+            d_result[prefix_op.aggregate.row] = prefix_op.aggregate.partial;
         }
     }
 
@@ -565,7 +574,8 @@ __global__ void CooKernel(
     VertexId*                       d_columns,
     Value*                          d_values,
     Value*                          d_vector,
-    Value*                          d_result)
+    Value*                          d_result,
+    int                             num_edges)
 {
     const int TILE_SIZE = CTA_THREADS * ITEMS_PER_THREAD;
 
@@ -687,12 +697,12 @@ void TestDevice(
 
     // Allocate COO device arrays
     CachedAllocator *allocator = CubCachedAllocator<void>();
-    CubDebugExit(allocator->Allocate((void**)&d_rows,       sizeof(VertexId) * num_edges));
-    CubDebugExit(allocator->Allocate((void**)&d_columns,    sizeof(VertexId) * num_edges));
-    CubDebugExit(allocator->Allocate((void**)&d_values,     sizeof(Value) * num_edges));
-    CubDebugExit(allocator->Allocate((void**)&d_vector,     sizeof(Value) * coo_graph.col_dim));
-    CubDebugExit(allocator->Allocate((void**)&d_result,     sizeof(Value) * coo_graph.row_dim));
-    CubDebugExit(allocator->Allocate((void**)&d_scan_progress, sizeof(ScanProgress<VertexId, Value>)));
+    CubDebugExit(allocator->Allocate((void**)&d_rows,           sizeof(VertexId) * num_edges));
+    CubDebugExit(allocator->Allocate((void**)&d_columns,        sizeof(VertexId) * num_edges));
+    CubDebugExit(allocator->Allocate((void**)&d_values,         sizeof(Value) * num_edges));
+    CubDebugExit(allocator->Allocate((void**)&d_vector,         sizeof(Value) * coo_graph.col_dim));
+    CubDebugExit(allocator->Allocate((void**)&d_result,         sizeof(Value) * coo_graph.row_dim));
+    CubDebugExit(allocator->Allocate((void**)&d_scan_progress,  sizeof(ScanProgress<VertexId, Value>)));
 
     // Copy host arrays to device
     CubDebugExit(cudaMemcpy(d_rows,     h_rows,     sizeof(VertexId) * num_edges, cudaMemcpyHostToDevice));

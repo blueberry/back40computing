@@ -31,6 +31,7 @@
 
 #include "../ns_wrapper.cuh"
 #include "../macro_utils.cuh"
+#include "../host/allocator.cuh"
 
 CUB_NS_PREFIX
 namespace cub {
@@ -40,12 +41,13 @@ namespace cub {
  * Description of work distribution amongst CTAs
  */
 template <
-    typename SizeT,
-    bool WORK_STEALING = false>
+    typename    SizeT,
+    bool        WORK_STEALING = false>
 class CtaProgress
 {
 private:
 
+    // Grid-specific fields
     SizeT   total_items;
     SizeT   total_grains;
     int     grid_size;
@@ -54,34 +56,56 @@ private:
     SizeT   normal_share;
     SizeT   normal_base_offset;
 
-    // CTA-specific fields
-    SizeT   cta_offset;
-    SizeT   cta_oob;
+    SizeT   *d_steal_counter;
+
+    /// Shared memory storage layout type
+    struct SmemStorage
+    {
+        SizeT   cta_offset;
+        SizeT   cta_oob;
+    };
+
+    SmemStorage &smem_storage;
+
+public:
+
+    /// The operations exposed by CtaScan require shared memory of this
+    /// type.  This opaque storage can be allocated directly using the
+    /// <tt>__shared__</tt> keyword.  Alternatively, it can be aliased to
+    /// externally allocated shared memory or <tt>union</tt>'d with other types
+    /// to facilitate shared memory reuse.
+    typedef SmemStorage SmemStorage;
 
 public:
 
     /**
      * Constructor.
      *
-     * Generally constructed in host code one time.
+     * Generally constructed in host code.
      */
     __host__ __device__ __forceinline__ CtaProgress(
         SizeT   total_items,
         int     grid_size,
-        int     schedule_granularity) :
+        int     schedule_granularity,
+        SizeT   *d_steal_counter = NULL) :
             // initializers
             total_items(total_items),
             grid_size(grid_size),
             cta_offset(0),
-            cta_oob(0)
+            cta_oob(0),
+            d_steal_counter(d_steal_counter)
     {
-        total_grains            = (total_items + schedule_granularity - 1) / schedule_granularity;
-        SizeT grains_per_cta    = total_grains / grid_size;
-        big_ctas                = total_grains - (grains_per_cta * grid_size);        // leftover grains go to big blocks
-        normal_share            = grains_per_cta * schedule_granularity;
-        normal_base_offset      = big_ctas * schedule_granularity;
-        big_share               = normal_share + schedule_granularity;
+        if (!WORK_STEALING)
+        {
+            total_grains            = (total_items + schedule_granularity - 1) / schedule_granularity;
+            SizeT grains_per_cta    = total_grains / grid_size;
+            big_ctas                = total_grains - (grains_per_cta * grid_size);        // leftover grains go to big blocks
+            normal_share            = grains_per_cta * schedule_granularity;
+            normal_base_offset      = big_ctas * schedule_granularity;
+            big_share               = normal_share + schedule_granularity;
+        }
     }
+
 
 
     /**
@@ -89,31 +113,30 @@ public:
      *
      * Generally initialized by each CTA after construction on the host.
      */
-    __device__ __forceinline__ void Init()
+    __device__ __forceinline__ void Init(SmemStorage &smem_storage)
     {
-        if (WORK_STEALING)
+        if (!WORK_STEALING)
         {
-            // TODO
-        }
-        else
-        {
-            if (blockIdx.x < big_ctas)
+            if (threadIdx.x == 0)
             {
-                // This CTA gets a big share of grains (grains_per_cta + 1)
-                cta_offset = (blockIdx.x * big_share);
-                cta_oob = cta_offset + big_share;
-            }
-            else if (blockIdx.x < total_grains)
-            {
-                // This CTA gets a normal share of grains (grains_per_cta)
-                cta_offset = normal_base_offset + (blockIdx.x * normal_share);
-                cta_oob = cta_offset + normal_share;
-            }
+                if (blockIdx.x < big_ctas)
+                {
+                    // This CTA gets a big share of grains (grains_per_cta + 1)
+                    cta_offset = (blockIdx.x * big_share);
+                    cta_oob = cta_offset + big_share;
+                }
+                else if (blockIdx.x < total_grains)
+                {
+                    // This CTA gets a normal share of grains (grains_per_cta)
+                    cta_offset = normal_base_offset + (blockIdx.x * normal_share);
+                    cta_oob = cta_offset + normal_share;
+                }
 
-            // Last CTA
-            if (blockIdx.x == grid_size - 1)
-            {
-                cta_oob = total_items;
+                // Last CTA
+                if (blockIdx.x == grid_size - 1)
+                {
+                    cta_oob = total_items;
+                }
             }
         }
     }
@@ -149,10 +172,23 @@ public:
      *
      */
     __device__ __forceinline__ bool NextFull(
-        int tile_size,
-        SizeT &cta_offset)
+        SmemStorage     &smem_storage,      ///< [in] Shared reference to opaque SmemStorage layout
+        int             tile_size,
+        SizeT           &cta_offset)
     {
-        if (!WORK_STEALING)
+        if (WORK_STEALING)
+        {
+            if (threadIdx.x == 0)
+            {
+                smem_storage.cta_offset = atomicAdd(d_steal_counter, (SizeT) tile_size);
+            }
+
+            __syncthreads();
+
+            cta_offset = smem_storage.cta_offset;
+            return (cta_offset + tile_size <= total_items);
+        }
+        else
         {
             if (this->cta_offset + tile_size <= cta_oob)
             {
@@ -164,11 +200,6 @@ public:
             {
                 return false;
             }
-        }
-        else
-        {
-            // TODO
-            return false;
         }
     }
 
