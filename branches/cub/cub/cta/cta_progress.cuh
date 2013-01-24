@@ -31,9 +31,208 @@
 
 #include "../ns_wrapper.cuh"
 #include "../macro_utils.cuh"
+#include "../host/allocator.cuh"
 
 CUB_NS_PREFIX
 namespace cub {
+
+
+/**
+ * Queue abstraction.
+ *
+ * Filling works by atomically-incrementing a zero-initialized counter, giving the
+ * offset for writing items.
+ *
+ * Draining works by atomically-incrementing a different zero-initialized counter until
+ * the previous fill-size is exceeded.
+ */
+template <typename SizeT>
+struct Queue
+{
+    enum
+    {
+        FILL    = 0,
+        DRAIN   = 1,
+    };
+
+    SizeT *d_counters;
+    SizeT fill_size;
+
+    /// Constructor
+    Queue() : d_counters(NULL), fill_size(0) {}
+
+    /******************************************************************//**
+     * \name Host implementation
+     *********************************************************************/
+
+    /// Allocate
+    __host__ __forceinline__ cudaError_t Allocate()
+    {
+        return CubDebug(CubCachedAllocator<void>()->Allocate((void**)&d_counters, sizeof(SizeT) * 2));
+    }
+
+    /// Deallocate
+    __host__ __forceinline__ cudaError_t Deallocate()
+    {
+        cudaError_t error = CubDebug(CubCachedAllocator<void>()->Deallocate(d_counters));
+        d_counters = NULL;
+        return error;
+    }
+
+    /// Initializes a full-queue
+    __host__ __forceinline__ cudaError_t Init(SizeT fill_size)
+    {
+        this->fill_size = fill_size;
+        SizeT counters[2] = { fill_size, 0};
+        return cudaMemcpy(d_counters, counters, sizeof(SizeT) * 2, cudaMemcpyHostToDevice);
+    }
+
+    /// Initializes an empty queue
+    __host__ __forceinline__ cudaError_t Init()
+    {
+        this->fill_size = 0;
+        return cudaMemset(d_counters, 0, sizeof(SizeT) * 2);
+    }
+
+    /// Returns number of items filled
+    __host__ __forceinline__ cudaError_t Size(SizeT &num_items)
+    {
+        return cudaMemcpy(&num_items, d_counters + FILL, sizeof(SizeT), cudaMemcpyDeviceToHost);
+    }
+
+
+    /******************************************************************//**
+     * \name Device implementation
+     *********************************************************************/
+
+    /// Allocate
+    __device__ __forceinline__ cudaError_t Allocate()
+    {
+        cudaError_t error = CubDebug(cudaMalloc(&d_counters,  sizeof(SizeT) * 2));
+        d_counters = NULL;
+        return error;
+    }
+    /// Deallocate
+    __device__ __forceinline__ cudaError_t Deallocate()
+    {
+        return CubDebug(cudaFree(d_counters));
+    }
+
+    /// Initializer
+    __device__ __forceinline__ cudaError_t Init(SizeT fill_size)
+    {
+        this->fill_size = fill_size;
+        *d_counters = 0;
+        return cudaSuccess;
+    }
+
+    /// Dequeue num_items items.  Returns offset from which to read items.
+    __device__ __forceinline__ SizeT Dequeue(SizeT num_items)
+    {
+        return atomicAdd(d_counters, num_items);
+    }
+
+    /// Returns number of items previously filled.  (Only valid in kernels not actively filling.)
+    __device__ __forceinline__ cudaError_t Size(SizeT &num_items)
+    {
+        num_items = *d_counters;
+        return cudaSuccess;
+    }
+
+};
+
+
+/**
+ * Fill.  Works by atomically-incrementing a zero-initialized counter.
+ */
+template <typename SizeT>
+struct Fill
+{
+    SizeT *d_counters;
+
+    /// Constructor
+    Fill() : d_counters(NULL) {}
+
+    /******************************************************************//**
+     * \name Host implementation
+     *********************************************************************/
+
+    /// Allocate
+    __host__ __forceinline__ cudaError_t Allocate()
+    {
+        return CubDebug(CubCachedAllocator<void>()->Allocate((void**)&d_counters, sizeof(SizeT) * 2));
+    }
+
+    /// Deallocate
+    __host__ __forceinline__ cudaError_t Deallocate()
+    {
+        cudaError_t error = CubDebug(CubCachedAllocator<void>()->Deallocate(d_counters));
+        d_counters = NULL;
+        return error;
+    }
+
+    /// Initializer
+    __host__ __forceinline__ cudaError_t Init()
+    {
+        return cudaMemset(d_counters, 0, sizeof(SizeT) * 2);
+    }
+
+
+
+    /******************************************************************//**
+     * \name Device implementation
+     *********************************************************************/
+
+    /// Allocate
+    __device__ __forceinline__ cudaError_t Allocate()
+    {
+        cudaError_t error = CubDebug(cudaMalloc(&d_counters,  sizeof(SizeT) * 2));
+        d_counters = NULL;
+        return error;
+    }
+    /// Deallocate
+    __device__ __forceinline__ cudaError_t Deallocate()
+    {
+        return CubDebug(cudaFree(d_counters));
+    }
+
+    /// Initializer
+    __device__ __forceinline__ cudaError_t Init()
+    {
+        if ((blockIdx.x == 0) && (threadIdx.x == 0)) *d_counters = 0;
+        return cudaSuccess;
+    }
+
+    /// Enqueue num_items items.  Returns offset from which to write items.
+    __device__ __forceinline__ SizeT Enqueue(SizeT num_items)
+    {
+        return atomicAdd(d_counters, num_items);
+    }
+
+};
+
+
+
+template <typename SizeT>
+class Queue
+{
+    enum
+    {
+        ENQUEUE = 0,
+        DEQUEUE = 1,
+    };
+
+    // Two counters
+    SizeT *d_counters;
+
+    Queue()
+    {
+
+    }
+
+    __device__ __forceinline__
+
+};
 
 
 /**

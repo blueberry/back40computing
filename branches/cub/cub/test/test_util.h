@@ -228,7 +228,7 @@ public:
  ******************************************************************************/
 
 /**
- * Generates random 32-bit keys.
+ * Generates random keys.
  *
  * We always take the second-order byte from rand() because the higher-order
  * bits returned by rand() are commonly considered more uniformly distributed
@@ -248,9 +248,6 @@ public:
  * 4					| 6.42
  * ...					| ...
  *
- */
-/**
- * Random bits
  */
 template <typename K>
 void RandomBits(
