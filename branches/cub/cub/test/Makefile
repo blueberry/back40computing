@@ -205,3 +205,13 @@ bin/test_coo_spmv_$(SUFFIX) : test_coo_spmv.cu $(DEPS)
 	mkdir -p bin
 	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_coo_spmv_$(SUFFIX) test_coo_spmv.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3
 
+#-------------------------------------------------------------------------------
+# make test_init
+#-------------------------------------------------------------------------------
+
+test_init: bin/test_init_$(SUFFIX)
+
+bin/test_init_$(SUFFIX) : test_init.cu $(DEPS)
+	mkdir -p bin
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_init_$(SUFFIX) test_init.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3
+
