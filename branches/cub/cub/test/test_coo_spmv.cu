@@ -500,7 +500,7 @@ struct SpmvCta
         // Transpose from CTA-striped to CTA-blocked arrangement
         CtaExchange::StripedToBlocked(s_storage.exchange, partial_sums);
 
-        // Barrier for smem reuse
+        // TestBarrier for smem reuse
         __syncthreads();
 
         // Save a copy of the original rows.  We will use them to compute the row head flags
@@ -528,7 +528,7 @@ struct SpmvCta
             local_aggregate,        // (Out)
             prefix_op);             // (In-out)
 
-        // Barrier for smem reuse and coherence
+        // TestBarrier for smem reuse and coherence
         __syncthreads();
 
         // Flag row heads using saved row ids
@@ -605,7 +605,7 @@ __global__ void CooKernel(
             cta_progress.TotalItems(),
             cta_offset);
 
-        // Barrier for smem reuse and coherence
+        // TestBarrier for smem reuse and coherence
         __syncthreads();
     }
 
@@ -757,12 +757,12 @@ void TestDevice(
 
     // Cleanup
     TexVector<Value>::UnbindTexture();
-    CubDebugExit(allocator->Deallocate(d_scan_progress));
-    CubDebugExit(allocator->Deallocate(d_rows));
-    CubDebugExit(allocator->Deallocate(d_columns));
-    CubDebugExit(allocator->Deallocate(d_values));
-    CubDebugExit(allocator->Deallocate(d_vector));
-    CubDebugExit(allocator->Deallocate(d_result));
+    CubDebugExit(allocator->DeviceFree(d_scan_progress));
+    CubDebugExit(allocator->DeviceFree(d_rows));
+    CubDebugExit(allocator->DeviceFree(d_columns));
+    CubDebugExit(allocator->DeviceFree(d_values));
+    CubDebugExit(allocator->DeviceFree(d_vector));
+    CubDebugExit(allocator->DeviceFree(d_result));
     delete h_rows;
     delete h_columns;
     delete h_values;

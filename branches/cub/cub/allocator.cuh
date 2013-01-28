@@ -28,12 +28,74 @@
 #include <set>
 #include <map>
 
-#include "../ns_wrapper.cuh"
-#include "../host/spinlock.cuh"
-#include "../host/debug.cuh"
+#include "ns_wrapper.cuh"
+#include "device_props.cuh"
+#include "debug.cuh"
+
+#include "host/spinlock.cuh"
 
 CUB_NS_PREFIX
 namespace cub {
+namespace {         // Anonymous namespace to prevent multiple symbol definition errors
+
+
+/******************************************************************************
+ * DeviceAllocator abstract base class
+ ******************************************************************************/
+
+/**
+ * Abstract base allocator class for device memory allocations.
+ */
+class DeviceAllocator
+{
+public:
+
+    /**
+     * Sets the limit on the number bytes this allocator is allowed to
+     * cache per GPU.
+     */
+    virtual void SetMaxCachedBytes(size_t max_cached_bytes) = 0;
+
+
+    /**
+     * Provides a suitable allocation of device memory for the given size
+     * on the specified GPU
+     */
+    virtual cudaError_t DeviceAllocate(void** d_ptr, size_t bytes, GpuOrdinal gpu) = 0;
+
+
+    /**
+     * Provides a suitable allocation of device memory for the given size
+     * on the current GPU
+     */
+    virtual cudaError_t DeviceAllocate(void** d_ptr, size_t bytes) = 0;
+
+
+    /**
+     * Frees a live allocation of GPU memory on the specified GPU, returning it to
+     * the allocator
+     */
+    virtual cudaError_t DeviceFree(void* d_ptr, GpuOrdinal gpu) = 0;
+
+
+    /**
+     * Frees a live allocation of GPU memory on the current GPU, returning it to the
+     * allocator
+     */
+    virtual cudaError_t DeviceFree(void* d_ptr) = 0;
+
+
+    /**
+     * Frees all cached device allocations on all GPUs
+     */
+    virtual cudaError_t FreeAllCached() = 0;
+};
+
+
+
+/******************************************************************************
+ * CachingDeviceAllocator
+ ******************************************************************************/
 
 
 /**
@@ -56,7 +118,7 @@ namespace cub {
  * (max_cached_bytes), allocations for that GPU are simply freed when they are
  * deallocated instead of being returned to their bin-cache.
  *
- * For example, the default-constructed CachedAllocator is configured with:
+ * For example, the default-constructed CachingDeviceAllocator is configured with:
  * 		bin_growth = 8
  * 		min_bin = 3
  * 		max_bin = 7
@@ -66,19 +128,11 @@ namespace cub {
  * and sets a maximum of 6,291,455 cached bytes per GPU
  *
  */
-struct CachedAllocator
+struct CachingDeviceAllocator : public DeviceAllocator
 {
 	//---------------------------------------------------------------------
 	// Type definitions and constants
 	//---------------------------------------------------------------------
-
-	typedef int GpuOrdinal;
-
-	enum
-	{
-		INVALID_GPU_ORDINAL = -1,
-	};
-
 
 	/**
 	 * Integer pow function for unsigned base and exponent
@@ -210,7 +264,7 @@ struct CachedAllocator
 	/**
 	 * Constructor.
 	 */
-	CachedAllocator(
+	CachingDeviceAllocator(
 		unsigned int bin_growth,		// Geometric growth factor for bin-sizes
 		unsigned int min_bin,			// Minimum bin
 		unsigned int max_bin,			// Maximum bin
@@ -238,7 +292,7 @@ struct CachedAllocator
 	 * 	which delineates five bin-sizes: 512B, 4KB, 32KB, 256KB, and 2MB
 	 * 	and sets a maximum of 6,291,455 cached bytes per GPU
 	 */
-	CachedAllocator() :
+	CachingDeviceAllocator() :
 		debug(false),
 		spin_lock(0),
 		cached_blocks(BlockDescriptor::SizeCompare),
@@ -274,7 +328,7 @@ struct CachedAllocator
 	 * Provides a suitable allocation of device memory for the given size
 	 * on the specified GPU
 	 */
-	cudaError_t Allocate(void** d_ptr, size_t bytes, GpuOrdinal gpu)
+	cudaError_t DeviceAllocate(void** d_ptr, size_t bytes, GpuOrdinal gpu)
 	{
 		bool locked 					= false;
 		GpuOrdinal entrypoint_gpu 		= INVALID_GPU_ORDINAL;
@@ -375,13 +429,13 @@ struct CachedAllocator
 	 * Provides a suitable allocation of device memory for the given size
 	 * on the current GPU
 	 */
-	cudaError_t Allocate(void** d_ptr, size_t bytes)
+	cudaError_t DeviceAllocate(void** d_ptr, size_t bytes)
 	{
 		cudaError_t error = cudaSuccess;
 		do {
 			GpuOrdinal current_gpu;
 			if (error = CubDebug(cudaGetDevice(&current_gpu))) break;
-			if (error = Allocate(d_ptr, bytes, current_gpu)) break;
+			if (error = DeviceAllocate(d_ptr, bytes, current_gpu)) break;
 		} while(0);
 
 		return error;
@@ -389,10 +443,10 @@ struct CachedAllocator
 
 
 	/**
-	 * Returns a live allocation of GPU memory on the specified GPU to
+	 * Frees a live allocation of GPU memory on the specified GPU, returning it to
 	 * the allocator
 	 */
-	cudaError_t Deallocate(void* d_ptr, GpuOrdinal gpu)
+	cudaError_t DeviceFree(void* d_ptr, GpuOrdinal gpu)
 	{
 		bool locked 					= false;
 		GpuOrdinal entrypoint_gpu 		= INVALID_GPU_ORDINAL;
@@ -468,17 +522,17 @@ struct CachedAllocator
 
 
 	/**
-	 * Returns a live allocation of device memory on the current GPU to the
+	 * Frees a live allocation of GPU memory on the current GPU, returning it to the
 	 * allocator
 	 */
-	cudaError_t Deallocate(void* d_ptr)
+	cudaError_t DeviceFree(void* d_ptr)
 	{
 		GpuOrdinal current_gpu;
 		cudaError_t error = cudaSuccess;
 
 		do {
 			if (error = CubDebug(cudaGetDevice(&current_gpu))) break;
-			if (error = Deallocate(d_ptr, current_gpu)) break;
+			if (error = DeviceFree(d_ptr, current_gpu)) break;
 		} while(0);
 
 		return error;
@@ -544,21 +598,120 @@ struct CachedAllocator
 
 		return error;
 	}
-};
+
+} default_allocator;        /// Default caching allocator instance
+
+
+
+/******************************************************************************
+ * CUB allocation operations
+ ******************************************************************************/
+
+
+// Pointer to device allocator
+DeviceAllocator *allocator = &default_allocator;
+
+// Custom/caching allocators are unavailable from within device code
+#ifndef __CUDA_ARCH__
+
+    /**
+     * Sets the default CUB device allocator to the specified instance
+     */
+    void SetDeviceAllocator(DeviceAllocator *new_allocator)
+    {
+        allocator = new_allocator;
+    }
+
+    /**
+     * Sets the default CUB device allocator to the specified instance
+     */
+    DeviceAllocator* GetDeviceAllocator()
+    {
+        return allocator;
+    }
+
+    /**
+     * Sets the limit on the number bytes this allocator is allowed to
+     * cache per GPU.
+     */
+    void SetMaxCachedBytes(size_t max_cached_bytes)
+    {
+        return allocator->SetMaxCachedBytes(max_cached_bytes);
+    }
+
+    /**
+     * Frees all cached device allocations on all GPUs
+     */
+    cudaError_t FreeAllCached()
+    {
+        return allocator->FreeAllCached();
+    }
+
+#endif
 
 
 /**
- * Singleton factory for unit-wide cached allocator
+ * Provides a suitable allocation of device memory for the given size
+ * on the specified GPU
  */
-template <typename Dummy>
-CachedAllocator* CubCachedAllocator()
+cudaError_t DeviceAllocate(void** d_ptr, size_t bytes, GpuOrdinal gpu)
 {
-	static CachedAllocator allocator;
-	return &allocator;
+#ifdef __CUDA_ARCH__
+    // Cannot allocate on other GPUs from within device code
+    return cudaErrorInvalidDevice;
+#else
+    return allocator->DeviceAllocate(d_ptr, bytes, gpu);
+#endif
 }
 
 
+/**
+ * Provides a suitable allocation of device memory for the given size
+ * on the current GPU
+ */
+cudaError_t DeviceAllocate(void** d_ptr, size_t bytes)
+{
+#ifdef __CUDA_ARCH__
+    // Custom/caching allocators are unavailable from within device code
+    return CubDebug(cudaMalloc(&d_ptr, bytes));
+#else
+    return allocator->DeviceAllocate(d_ptr, bytes);
+#endif
+}
 
+
+/**
+ * Frees a live allocation of GPU memory on the specified GPU, returning it to
+ * the allocator
+ */
+cudaError_t DeviceFree(void* d_ptr, GpuOrdinal gpu)
+{
+#ifdef __CUDA_ARCH__
+    // Cannot allocate on other GPUs from within device code
+    return cudaErrorInvalidDevice;
+#else
+    return allocator->DeviceFree(d_ptr, gpu);
+#endif
+}
+
+
+/**
+ * Frees a live allocation of GPU memory on the current GPU, returning it to the
+ * allocator
+ */
+cudaError_t DeviceFree(void* d_ptr)
+{
+#ifdef __CUDA_ARCH__
+    // Custom/caching allocators are unavailable from within device code
+    return CubDebug(cudaFree(d_ptr));
+#else
+    return allocator->DeviceFree(d_ptr);
+#endif
+}
+
+
+} // anonymous namespace
 
 } // namespace cub
+
 CUB_NS_POSTFIX

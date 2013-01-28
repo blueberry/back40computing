@@ -24,19 +24,11 @@
 #pragma once
 
 #include "../device_props.cuh"
-#include "../host/debug.cuh"
+#include "../debug.cuh"
 #include "../ns_wrapper.cuh"
 
 CUB_NS_PREFIX
 namespace cub {
-
-
-/**
- * Invalid CUDA gpu device ordinal
- */
-enum {
-	INVALID_GPU_ORDINAL = -1,
-};
 
 
 /**

@@ -63,7 +63,7 @@ int main(int argc, char** argv)
 	if (CubDebug(cudaGetDevice(&initial_gpu))) exit(1);
 
 	// Create default allocator (caches up to 6MB in device allocations per GPU)
-    CachedAllocator allocator;
+    CachingDeviceAllocator allocator;
     allocator.debug = true;
 
 	printf("Running single-gpu tests...\n"); fflush(stdout);
@@ -74,7 +74,7 @@ int main(int argc, char** argv)
 
     // Allocate 5 bytes on the current gpu
     char *d_5B;
-    allocator.Allocate((void **) &d_5B, 5);
+    allocator.DeviceAllocate((void **) &d_5B, 5);
 
     // Check that that we have zero bytes allocated on the initial GPU
     AssertEquals(allocator.cached_bytes[initial_gpu], 0);
@@ -88,7 +88,7 @@ int main(int argc, char** argv)
 
     // Allocate 4096 bytes on the current gpu
     char *d_4096B;
-    allocator.Allocate((void **) &d_4096B, 4096);
+    allocator.DeviceAllocate((void **) &d_4096B, 4096);
 
     // Check that that we have 2 live blocks on the initial GPU
     AssertEquals(allocator.live_blocks.size(), 2);
@@ -97,8 +97,8 @@ int main(int argc, char** argv)
     // Test3
     //
 
-    // Deallocate d_5B
-    allocator.Deallocate(d_5B);
+    // DeviceFree d_5B
+    allocator.DeviceFree(d_5B);
 
     // Check that that we have min_bin_bytes free bytes cached on the initial gpu
     AssertEquals(allocator.cached_bytes[initial_gpu], allocator.min_bin_bytes);
@@ -113,8 +113,8 @@ int main(int argc, char** argv)
     // Test4
     //
 
-    // Deallocate d_4096B
-    allocator.Deallocate(d_4096B);
+    // DeviceFree d_4096B
+    allocator.DeviceFree(d_4096B);
 
     // Check that that we have the 4096 + min_bin free bytes cached on the initial gpu
     AssertEquals(allocator.cached_bytes[initial_gpu], allocator.min_bin_bytes + 4096);
@@ -131,7 +131,7 @@ int main(int argc, char** argv)
 
     // Allocate 768 bytes on the current gpu
     char *d_768B;
-    allocator.Allocate((void **) &d_768B, 768);
+    allocator.DeviceAllocate((void **) &d_768B, 768);
 
     // Check that that we have the min_bin free bytes cached on the initial gpu (4096 was reused)
     AssertEquals(allocator.cached_bytes[initial_gpu], allocator.min_bin_bytes);
@@ -148,10 +148,10 @@ int main(int argc, char** argv)
 
     // Allocate max_cached_bytes on the current gpu
     char *d_max_cached;
-    allocator.Allocate((void **) &d_max_cached, allocator.max_cached_bytes);
+    allocator.DeviceAllocate((void **) &d_max_cached, allocator.max_cached_bytes);
 
-    // Deallocate d_max_cached
-    allocator.Deallocate(d_max_cached);
+    // DeviceFree d_max_cached
+    allocator.DeviceFree(d_max_cached);
 
     // Check that that we have the min_bin free bytes cached on the initial gpu (max cached was not returned because we went over)
     AssertEquals(allocator.cached_bytes[initial_gpu], allocator.min_bin_bytes);
@@ -184,13 +184,13 @@ int main(int argc, char** argv)
 
     // Allocate max cached bytes + 1 on the current gpu
     char *d_max_cached_plus;
-    allocator.Allocate((void **) &d_max_cached_plus, allocator.max_cached_bytes + 1);
+    allocator.DeviceAllocate((void **) &d_max_cached_plus, allocator.max_cached_bytes + 1);
 
-    // Deallocate max cached bytes
-    allocator.Deallocate(d_max_cached_plus);
+    // DeviceFree max cached bytes
+    allocator.DeviceFree(d_max_cached_plus);
 
-    // Deallocate d_768B
-    allocator.Deallocate(d_768B);
+    // DeviceFree d_768B
+    allocator.DeviceFree(d_768B);
 
     unsigned int power;
     size_t rounded_bytes;
@@ -216,10 +216,10 @@ int main(int argc, char** argv)
     	// Allocate 768 bytes on the next gpu
 		int next_gpu = (initial_gpu + 1) % num_gpus;
 		char *d_768B_2;
-		allocator.Allocate((void **) &d_768B_2, 768, next_gpu);
+		allocator.DeviceAllocate((void **) &d_768B_2, 768, next_gpu);
 
-		// Deallocate d_768B on the next gpu
-		allocator.Deallocate(d_768B_2, next_gpu);
+		// DeviceFree d_768B on the next gpu
+		allocator.DeviceFree(d_768B_2, next_gpu);
 
 		// Check that that we have 4096 free bytes cached on the initial gpu
 		AssertEquals(allocator.cached_bytes[initial_gpu], rounded_bytes);

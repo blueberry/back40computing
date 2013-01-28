@@ -246,8 +246,8 @@ void TestDriver(
     if (h_keys)             free(h_keys);
     if (h_reference_keys)   free(h_reference_keys);
     if (h_values)           free(h_values);
-    if (d_keys)             CubDebugExit(g_allocator.Deallocate(d_keys));
-    if (d_values)           CubDebugExit(g_allocator.Deallocate(d_values));
+    if (d_keys)             CubDebugExit(g_allocator.DeviceFree(d_keys));
+    if (d_values)           CubDebugExit(g_allocator.DeviceFree(d_values));
 }
 
 

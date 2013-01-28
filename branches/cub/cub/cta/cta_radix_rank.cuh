@@ -274,7 +274,7 @@ private :
             warpscan[0] = partial;
         }
 
-        // Barrier
+        // TestBarrier
         __syncthreads();
 
         // Scan across warpscan totals

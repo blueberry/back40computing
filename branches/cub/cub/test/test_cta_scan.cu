@@ -576,8 +576,8 @@ void Test(int gen_mode)
 	Test<CTA_THREADS, ITEMS_PER_THREAD>(gen_mode, Sum<ulonglong4>(), make_ulonglong4(0, 0, 0, 0), make_ulonglong4(17, 21, 32, 85), CUB_TYPE_STRING(Sum<ulonglong4>));
 
 	// complex
-	Test<CTA_THREADS, ITEMS_PER_THREAD>(gen_mode, Sum<Foo>(), Foo::MakeFoo(0, 0, 0, 0), Foo::MakeFoo(17, 21, 32, 85), CUB_TYPE_STRING(Sum<Foo>));
-	Test<CTA_THREADS, ITEMS_PER_THREAD>(gen_mode, Sum<Bar>(), Bar::MakeBar(0, 0), Bar::MakeBar(17, 21), CUB_TYPE_STRING(Sum<Bar>));
+	Test<CTA_THREADS, ITEMS_PER_THREAD>(gen_mode, Sum<TestFoo>(), TestFoo::MakeTestFoo(0, 0, 0, 0), TestFoo::MakeTestFoo(17, 21, 32, 85), CUB_TYPE_STRING(Sum<TestFoo>));
+	Test<CTA_THREADS, ITEMS_PER_THREAD>(gen_mode, Sum<TestBar>(), TestBar::MakeTestBar(0, 0), TestBar::MakeTestBar(17, 21), CUB_TYPE_STRING(Sum<TestBar>));
 }
 
 
@@ -636,8 +636,8 @@ int main(int argc, char** argv)
         // Quick exclusive test
     	Test<128, 4, BASIC>(UNIFORM, Sum<int>(), int(0), int(10), CUB_TYPE_STRING(Sum<int));
 /*
-        Foo prefix = Foo::MakeFoo(17, 21, 32, 85);
-        Test<128, 2, PREFIX_AGGREGATE>(SEQ_INC, Sum<Foo>(), NullType(), prefix, CUB_TYPE_STRING(Sum<Foo>));
+        TestFoo prefix = TestFoo::MakeTestFoo(17, 21, 32, 85);
+        Test<128, 2, PREFIX_AGGREGATE>(SEQ_INC, Sum<TestFoo>(), NullType(), prefix, CUB_TYPE_STRING(Sum<TestFoo>));
 */
     }
     else

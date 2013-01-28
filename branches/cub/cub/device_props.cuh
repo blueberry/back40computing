@@ -43,12 +43,23 @@ namespace cub {
 /**
  * CUDA architecture-id targeted by the active compiler pass
  */
-enum {
 #ifndef __CUDA_ARCH__
-	PTX_ARCH = 0,						// Host path
+    // Host path
+    #define PTX_ARCH 0
 #else
-	PTX_ARCH = __CUDA_ARCH__,			// Device path
+    // Device path
+    #define PTX_ARCH __CUDA_ARCH__
 #endif
+
+
+/**
+ * Type for representing GPU device ordinals
+ */
+typedef int GpuOrdinal;
+
+enum
+{
+    INVALID_GPU_ORDINAL = -1,
 };
 
 

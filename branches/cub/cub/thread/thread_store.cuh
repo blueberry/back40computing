@@ -47,9 +47,9 @@
  *
  *     // 96-bit store using default cache modifier (ignoring PTX_STORE_CS)
  *
- *     		struct Foo { bool a; short b; };
- *     		Foo *d_struct;
- *     		Foo val;
+ *     		struct TestFoo { bool a; short b; };
+ *     		TestFoo *d_struct;
+ *     		TestFoo val;
  *     		ThreadStore<PTX_STORE_CS>(d_out + threadIdx.x, val);
  *
  *

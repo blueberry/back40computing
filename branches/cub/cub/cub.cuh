@@ -24,7 +24,11 @@
 
 #pragma once
 
-#include "cta/cta_global_barrier.cuh"
+// Grid
+#include "grid/grid_barrier.cuh"
+#include "grid/grid_queue.cuh"
+
+// CTA
 #include "cta/cta_load.cuh"
 #include "cta/cta_progress.cuh"
 #include "cta/cta_radix_rank.cuh"
@@ -34,26 +38,31 @@
 #include "cta/cta_store.cuh"
 #include "cta/cta_discontinuity.cuh"
 
-#include "host/allocator.cuh"
-#include "host/cuda_props.cuh"
-#include "host/debug.cuh"
-#include "host/kernel_props.cuh"
-#include "host/multi_buffer.cuh"
-#include "host/spinlock.cuh"
+// Warp
+#include "warp/warp_scan.cuh"
 
+// Thread
 #include "thread/thread_load.cuh"
 #include "thread/thread_reduce.cuh"
 #include "thread/thread_scan.cuh"
 #include "thread/thread_store.cuh"
 
-#include "warp/warp_scan.cuh"
+// Host
+#include "host/cuda_props.cuh"
+#include "host/kernel_props.cuh"
+#include "host/multi_buffer.cuh"
+#include "host/spinlock.cuh"
 
+// General
+#include "debug.cuh"
 #include "macro_utils.cuh"
 #include "device_props.cuh"
 #include "operators.cuh"
 #include "ptx_intrinsics.cuh"
 #include "type_utils.cuh"
 #include "vector_type.cuh"
+#include "allocator.cuh"
+
 
 /**
  * \mainpage

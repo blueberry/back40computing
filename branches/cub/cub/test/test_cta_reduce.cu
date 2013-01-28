@@ -80,7 +80,7 @@ __global__ void FullTileReduceKernel(
 	// Loop over input tiles
 	while (cta_offset < TILE_SIZE * tiles)
 	{
-		// Barrier between CTA reductions
+		// TestBarrier between CTA reductions
 		__syncthreads();
 
 		// Load tile of data
@@ -468,8 +468,8 @@ int main(int argc, char** argv)
 		Test<longlong4>(Sum<longlong4>(), CUB_TYPE_STRING(longlong4));
 
 		// Complex types
-		Test<Foo>(Sum<Foo>(), CUB_TYPE_STRING(Foo));
-		Test<Bar>(Sum<Bar>(), CUB_TYPE_STRING(Bar));
+		Test<TestFoo>(Sum<TestFoo>(), CUB_TYPE_STRING(TestFoo));
+		Test<TestBar>(Sum<TestBar>(), CUB_TYPE_STRING(TestBar));
     }
 
     return 0;

@@ -17,7 +17,6 @@ int     g_iterations    = 100000;
 int     g_num_counters  = 4;
 
 
-
 __global__ void MemsetKernel(int *d_counters)
 {
     if (threadIdx.x == 0)
@@ -28,7 +27,6 @@ __global__ void MemsetKernel(int *d_counters)
         d_counters[3] = 0;
     }
 }
-
 
 
 /**
@@ -109,7 +107,7 @@ int main(int argc, char** argv)
     CubDebugExit(cudaThreadSynchronize());
 
     // Cleanup
-    CubDebugExit(allocator->Deallocate(d_counters));
+    CubDebugExit(allocator->DeviceFree(d_counters));
 
     return 0;
 }

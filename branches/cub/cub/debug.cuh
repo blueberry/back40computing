@@ -25,7 +25,8 @@
 #pragma once
 
 #include <stdio.h>
-#include "../ns_wrapper.cuh"
+#include "ns_wrapper.cuh"
+#include "device_props.cuh"
 
 CUB_NS_PREFIX
 
@@ -45,13 +46,13 @@ namespace cub {
  *
  * \return The CUDA error.
  */
-__forceinline__ cudaError_t Debug(
+__host__ __device__ __forceinline__ cudaError_t Debug(
 	cudaError_t error,
 	const char *message,
 	const char *filename,
 	int line)
 {
-	#ifdef CUB_STDERR
+	#if (defined(CUB_STDERR) && (PTX_ARCH == 0))
 	if (error) {
 		fprintf(stderr, "[%s, %d] %s (CUDA error %d: %s)\n", filename, line, message, error, cudaGetErrorString(error));
 		fflush(stderr);
@@ -67,12 +68,12 @@ __forceinline__ cudaError_t Debug(
  *
  * \return The CUDA error.
  */
-__forceinline__ cudaError_t Debug(
+__host__ __device__ __forceinline__ cudaError_t Debug(
 	cudaError_t error,
 	const char *filename,
 	int line)
 {
-	#ifdef CUB_STDERR
+    #if (defined(CUB_STDERR) && (PTX_ARCH == 0))
 	if (error) {
 		fprintf(stderr, "[%s, %d] (CUDA error %d: %s)\n", filename, line, error, cudaGetErrorString(error));
 		fflush(stderr);

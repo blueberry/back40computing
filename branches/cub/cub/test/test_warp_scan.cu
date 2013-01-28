@@ -544,8 +544,8 @@ void Test(int gen_mode)
 	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<ulonglong4>(), make_ulonglong4(0, 0, 0, 0), make_ulonglong4(17, 21, 32, 85), CUB_TYPE_STRING(ulonglong4));
 
 	// complex
-	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<Foo>(), Foo::MakeFoo(0, 0, 0, 0), Foo::MakeFoo(17, 21, 32, 85), CUB_TYPE_STRING(Foo));
-	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<Bar>(), Bar::MakeBar(0, 0), Bar::MakeBar(17, 21), CUB_TYPE_STRING(Bar));
+	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<TestFoo>(), TestFoo::MakeTestFoo(0, 0, 0, 0), TestFoo::MakeTestFoo(17, 21, 32, 85), CUB_TYPE_STRING(TestFoo));
+	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<TestBar>(), TestBar::MakeTestBar(0, 0), TestBar::MakeTestBar(17, 21), CUB_TYPE_STRING(TestBar));
 }
 
 

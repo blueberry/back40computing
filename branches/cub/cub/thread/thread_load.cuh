@@ -44,9 +44,9 @@
  *
  *     // 96-bit load using default cache modifier (ignoring PTX_LOAD_CS)
  *
- *     		struct Foo { bool a; short b; };
- *     		Foo *d_struct;
- *     		Foo val = ThreadLoad<PTX_LOAD_CS>(d_in + threadIdx.x);
+ *     		struct TestFoo { bool a; short b; };
+ *     		TestFoo *d_struct;
+ *     		TestFoo val = ThreadLoad<PTX_LOAD_CS>(d_in + threadIdx.x);
  *
  *
  ******************************************************************************/

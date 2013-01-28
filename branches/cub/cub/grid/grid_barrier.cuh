@@ -23,7 +23,7 @@
 
 #pragma once
 
-#include "../host/debug.cuh"
+#include "../debug.cuh"
 #include "../ns_wrapper.cuh"
 #include "../thread/thread_load.cuh"
 
@@ -35,7 +35,7 @@ namespace cub {
  * Manages device storage needed for implementing a global software barrier
  * between CTAs in a single grid
  */
-class CtaGlobalBarrier
+class GridTestBarrier
 {
 protected :
 
@@ -49,7 +49,7 @@ public:
 	/**
 	 * Constructor
 	 */
-	CtaGlobalBarrier() : d_sync(NULL) {}
+	GridTestBarrier() : d_sync(NULL) {}
 
 
 	/**
@@ -117,7 +117,7 @@ public:
  * Uses RAII for lifetime, i.e., device resources are reclaimed when
  * the destructor is called (e.g., when the logical scope ends).
  */
-class CtaGlobalBarrierLifetime : public CtaGlobalBarrier
+class GridTestBarrierLifetime : public GridTestBarrier
 {
 protected:
 
@@ -129,11 +129,11 @@ public:
 	/**
 	 * Constructor
 	 */
-	CtaGlobalBarrierLifetime() : CtaGlobalBarrier(), sync_bytes(0) {}
+	GridTestBarrierLifetime() : GridTestBarrier(), sync_bytes(0) {}
 
 
 	/**
-	 * Deallocates and resets the progress counters
+	 * DeviceFrees and resets the progress counters
 	 */
 	cudaError_t HostReset()
 	{
@@ -151,7 +151,7 @@ public:
 	/**
 	 * Destructor
 	 */
-	virtual ~CtaGlobalBarrierLifetime()
+	virtual ~GridTestBarrierLifetime()
 	{
 		HostReset();
 	}
