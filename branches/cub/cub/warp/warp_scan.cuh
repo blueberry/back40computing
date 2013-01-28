@@ -1059,7 +1059,9 @@ public:
         prefix = WarpScanInternal<POLICY>::Broadcast(smem_storage, prefix, 0);
 
         // Update output
-        output = scan_op(prefix, output);
+        output = (lane_id == 0) ?
+            prefix :
+            scan_op(prefix, output);
     }
 
 
@@ -1143,14 +1145,9 @@ public:
         prefix = WarpScanInternal<POLICY>::Broadcast(smem_storage, prefix, 0);
 
         // Update output with prefix
-        if (lane_id == 0)
-        {
-            output = prefix;
-        }
-        else
-        {
-            output = scan_op(prefix, output);
-        }
+        output = (lane_id == 0) ?
+            prefix :
+            scan_op(prefix, output);
     }
 
     //@}

@@ -509,8 +509,8 @@ void Test(
 	}
 
 	// Cleanup
-	if (h_in) delete h_in;
-	if (h_reference) delete h_in;
+	if (h_in) delete[] h_in;
+	if (h_reference) delete[] h_in;
 	if (d_in) CubDebugExit(cudaFree(d_in));
 	if (d_out) CubDebugExit(cudaFree(d_out));
 }

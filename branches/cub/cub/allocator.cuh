@@ -654,13 +654,13 @@ DeviceAllocator *allocator = &default_allocator;
  * Provides a suitable allocation of device memory for the given size
  * on the specified GPU
  */
-cudaError_t DeviceAllocate(void** d_ptr, size_t bytes, GpuOrdinal gpu)
+__host__ __device__ __forceinline__ cudaError_t DeviceAllocate(void** d_ptr, size_t bytes, GpuOrdinal gpu)
 {
-#ifdef __CUDA_ARCH__
-    // Cannot allocate on other GPUs from within device code
-    return cudaErrorInvalidDevice;
-#else
+#ifndef __CUDA_ARCH__
     return allocator->DeviceAllocate(d_ptr, bytes, gpu);
+#else
+    // Cannot allocate on GPUs from within device code
+    return cudaErrorInvalidDevice;
 #endif
 }
 
@@ -669,13 +669,16 @@ cudaError_t DeviceAllocate(void** d_ptr, size_t bytes, GpuOrdinal gpu)
  * Provides a suitable allocation of device memory for the given size
  * on the current GPU
  */
-cudaError_t DeviceAllocate(void** d_ptr, size_t bytes)
+__host__ __device__ __forceinline__ cudaError_t DeviceAllocate(void** d_ptr, size_t bytes)
 {
-#ifdef __CUDA_ARCH__
+#ifndef __CUDA_ARCH__
+    return allocator->DeviceAllocate(d_ptr, bytes);
+#elif __CUDA_ARCH >= 350
     // Custom/caching allocators are unavailable from within device code
     return CubDebug(cudaMalloc(&d_ptr, bytes));
 #else
-    return allocator->DeviceAllocate(d_ptr, bytes);
+    // Cannot allocate on GPUs from within device code
+    return cudaErrorInvalidDevice;
 #endif
 }
 
@@ -684,13 +687,13 @@ cudaError_t DeviceAllocate(void** d_ptr, size_t bytes)
  * Frees a live allocation of GPU memory on the specified GPU, returning it to
  * the allocator
  */
-cudaError_t DeviceFree(void* d_ptr, GpuOrdinal gpu)
+__host__ __device__ __forceinline__ cudaError_t DeviceFree(void* d_ptr, GpuOrdinal gpu)
 {
-#ifdef __CUDA_ARCH__
-    // Cannot allocate on other GPUs from within device code
-    return cudaErrorInvalidDevice;
-#else
+#ifndef __CUDA_ARCH__
     return allocator->DeviceFree(d_ptr, gpu);
+#else
+    // Cannot allocate on GPUs from within device code
+    return cudaErrorInvalidDevice;
 #endif
 }
 
@@ -699,13 +702,16 @@ cudaError_t DeviceFree(void* d_ptr, GpuOrdinal gpu)
  * Frees a live allocation of GPU memory on the current GPU, returning it to the
  * allocator
  */
-cudaError_t DeviceFree(void* d_ptr)
+__host__ __device__ __forceinline__ cudaError_t DeviceFree(void* d_ptr)
 {
-#ifdef __CUDA_ARCH__
+#ifndef __CUDA_ARCH__
+    return allocator->DeviceFree(d_ptr);
+#elif __CUDA_ARCH >= 350
     // Custom/caching allocators are unavailable from within device code
     return CubDebug(cudaFree(d_ptr));
 #else
-    return allocator->DeviceFree(d_ptr);
+    // Cannot allocate on GPUs from within device code
+    return cudaErrorInvalidDevice;
 #endif
 }
 
