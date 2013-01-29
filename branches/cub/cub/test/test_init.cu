@@ -1,32 +1,43 @@
-// Ensure printing of CUDA runtime errors to console
-#define CUB_STDERR
-
-#include <iterator>
-#include <vector>
-#include <algorithm>
 #include <stdio.h>
+
 #include <test_util.h>
 
-#include "../cub.cuh"
-
-using namespace cub;
-using namespace std;
-
-bool    g_verbose       = false;
-int     g_iterations    = 100000;
-int     g_num_counters  = 4;
-
-
-__global__ void MemsetKernel(int *d_counters)
+__device__ __forceinline__ int LoadCg(int *ptr)
 {
+    int val;
+    asm volatile ("ld.global.cg.s32 %0, [%1];" : "=r"(val) : "r"(ptr));
+    return val;
+}
+
+
+__global__ void KernelA(int *d_counter, int *d_bid)
+{
+    __shared__ int sbid;
+
     if (threadIdx.x == 0)
     {
-        d_counters[0] = 0;
-        d_counters[1] = 0;
-        d_counters[2] = 0;
-        d_counters[3] = 0;
+        sbid = atomicAdd(d_bid, 1);
+    }
+
+    __syncthreads();
+
+    int bid = sbid;
+    if (threadIdx.x == 0)
+    {
+        // wait for prev
+        if (bid != 0)
+        {
+            while (LoadCg(d_counter + bid) == 0)
+            {
+                __threadfence_block();
+            }
+        }
+
+        // set next
+        d_counter[bid + 1] = 1;
     }
 }
+
 
 
 /**
@@ -34,80 +45,50 @@ __global__ void MemsetKernel(int *d_counters)
  */
 int main(int argc, char** argv)
 {
-    // Initialize command line
-    CommandLineArgs args(argc, argv);
-    g_verbose = args.CheckCmdLineFlag("v");
-    args.GetCmdLineArgument("i", g_iterations);
+    int iterations      = 100;
+    int num_ctas        = 1024 * 63;
+    int cta_size        = 1024;
 
-    // Initialize device
+    CommandLineArgs args(argc, argv);
     CubDebugExit(args.DeviceInit());
+    args.GetCmdLineArgument("i", iterations);
 
     // Device storage
-    int *d_counters;
+    int *d_counter, *d_bid;
 
     // Allocate device words
-    CachedAllocator *allocator = CubCachedAllocator<void>();
-    CubDebugExit(allocator->Allocate((void**)&d_counters, sizeof(int) * g_num_counters));
+    CubDebugExit(cudaMalloc((void**)&d_counter, sizeof(int) * num_ctas));
+    CubDebugExit(cudaMalloc((void**)&d_bid, sizeof(int)));
 
     GpuTimer gpu_timer;
-
-    //
-    // Run cudaMemset
-    //
-
-    gpu_timer.Start();
-    for (int i = 0; i < g_iterations; i++)
+    float elapsed_millis = 0.0;
+    for (int i = 0; i < iterations; i++)
     {
         // Zero-out the counters
-        CubDebugExit(cudaMemset(d_counters + 0, 0, sizeof(int)));
-        CubDebugExit(cudaMemset(d_counters + 1, 0, sizeof(int)));
-        CubDebugExit(cudaMemset(d_counters + 2, 0, sizeof(int)));
-        CubDebugExit(cudaMemset(d_counters + 3, 0, sizeof(int)));
+        CubDebugExit(cudaMemset(d_counter, 0, sizeof(int) * num_ctas));
+        CubDebugExit(cudaMemset(d_bid, 0, sizeof(int)));
+
+        gpu_timer.Start();
+
+        KernelA<<<num_ctas, cta_size>>>(d_counter, d_bid);
+
+        gpu_timer.Stop();
+        elapsed_millis += gpu_timer.ElapsedMillis();
     }
-    gpu_timer.Stop();
-    printf("cudaMemset %d iterations, average elapsed (%.4f ms)\n",
-        g_iterations,
-        gpu_timer.ElapsedMillis() / g_iterations);
 
-    //
-    // Run cudaMemsetAsync
-    //
+    float avg_elapsed = elapsed_millis / iterations;
 
-    gpu_timer.Start();
-    for (int i = 0; i < g_iterations; i++)
-    {
-        // Zero-out the counters
-        CubDebugExit(cudaMemsetAsync(d_counters + 0, 0, sizeof(int)));
-        CubDebugExit(cudaMemsetAsync(d_counters + 1, 0, sizeof(int)));
-        CubDebugExit(cudaMemsetAsync(d_counters + 2, 0, sizeof(int)));
-        CubDebugExit(cudaMemsetAsync(d_counters + 3, 0, sizeof(int)));
-    }
-    gpu_timer.Stop();
-    printf("cudaMemsetAsync %d iterations, average elapsed (%.4f ms)\n",
-        g_iterations,
-        gpu_timer.ElapsedMillis() / g_iterations);
-
-    //
-    // Run MemsetKernel
-    //
-
-    gpu_timer.Start();
-    for (int i = 0; i < g_iterations; i++)
-    {
-        // Zero-out the counters
-        MemsetKernel<<<1, g_num_counters>>>(d_counters);
-    }
-    gpu_timer.Stop();
-    printf("MemsetKernel %d iterations, average elapsed (%.4f ms)\n",
-        g_iterations,
-        gpu_timer.ElapsedMillis() / g_iterations);
-
+    printf("%d iterations, average elapsed (%.4f ms), %.4f M CTAs/s\n",
+        iterations,
+        avg_elapsed,
+        float(num_ctas) / avg_elapsed / 1000.0);
 
     // Force any kernel stdio to screen
     CubDebugExit(cudaThreadSynchronize());
 
     // Cleanup
-    CubDebugExit(allocator->DeviceFree(d_counters));
+    CubDebugExit(cudaFree(d_counter));
+    CubDebugExit(cudaFree(d_bid));
 
     return 0;
 }
