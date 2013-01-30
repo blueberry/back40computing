@@ -117,75 +117,77 @@ Static Public Member Functions</h2></td></tr>
 __forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#adec85c76d951c326e592e364aa63c728">InclusiveSum</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output)</td></tr>
 <tr class="memdesc:adec85c76d951c326e592e364aa63c728"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive prefix sum in each logical warp.  <a href="#adec85c76d951c326e592e364aa63c728"></a><br/></td></tr>
 <tr class="separator:adec85c76d951c326e592e364aa63c728"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a6665627fc09b719e5bd91c995139c94d"><td class="memItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
-__forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a6665627fc09b719e5bd91c995139c94d">InclusiveSum</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T &amp;aggregate)</td></tr>
-<tr class="memdesc:a6665627fc09b719e5bd91c995139c94d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive prefix sum in each logical warp. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>.  <a href="#a6665627fc09b719e5bd91c995139c94d"></a><br/></td></tr>
-<tr class="separator:a6665627fc09b719e5bd91c995139c94d"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a751686610b637caaf837c85d4c696345"><td class="memItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
-__forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a751686610b637caaf837c85d4c696345">InclusiveSum</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T &amp;aggregate, T &amp;warp_prefix)</td></tr>
-<tr class="memdesc:a751686610b637caaf837c85d4c696345"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive prefix sum in each logical warp. The <code>warp_prefix</code> value from thread-lane<sub>0</sub> is applied to all scan outputs. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>. The <code>warp_prefix</code> is further updated by the value of <code>aggregate</code>.  <a href="#a751686610b637caaf837c85d4c696345"></a><br/></td></tr>
-<tr class="separator:a751686610b637caaf837c85d4c696345"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a75fa41f9103a9e7a6cad20bb3164a1fe"><td class="memItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
+__forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a75fa41f9103a9e7a6cad20bb3164a1fe">InclusiveSum</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T &amp;local_aggregate)</td></tr>
+<tr class="memdesc:a75fa41f9103a9e7a6cad20bb3164a1fe"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive prefix sum in each logical warp. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>.  <a href="#a75fa41f9103a9e7a6cad20bb3164a1fe"></a><br/></td></tr>
+<tr class="separator:a75fa41f9103a9e7a6cad20bb3164a1fe"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:af2ae27cea962d6907a1d3d83954a2558"><td class="memTemplParams" colspan="2">template&lt;typename WarpPrefixOp &gt; </td></tr>
+<tr class="memitem:af2ae27cea962d6907a1d3d83954a2558"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
+__forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#af2ae27cea962d6907a1d3d83954a2558">InclusiveSum</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T &amp;local_aggregate, WarpPrefixOp &amp;warp_prefix_op)</td></tr>
+<tr class="memdesc:af2ae27cea962d6907a1d3d83954a2558"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive prefix sum in each logical warp. The functor <code>warp_prefix_op</code> is evaluated by <em>warp-lane</em><sub>0</sub> to provide the preceding (or "base") value that logically prefixes the warp's scan inputs. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>. The <code>warp_prefix_op</code> is further updated by the value of <code>aggregate</code>.  <a href="#af2ae27cea962d6907a1d3d83954a2558"></a><br/></td></tr>
+<tr class="separator:af2ae27cea962d6907a1d3d83954a2558"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr><td colspan="2"><div class="groupHeader">Exclusive prefix sums</div></td></tr>
 <tr class="memitem:a2695420235a1ace8817a595a6f930d61"><td class="memItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a2695420235a1ace8817a595a6f930d61">ExclusiveSum</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output)</td></tr>
 <tr class="memdesc:a2695420235a1ace8817a595a6f930d61"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive prefix sum in each logical warp.  <a href="#a2695420235a1ace8817a595a6f930d61"></a><br/></td></tr>
 <tr class="separator:a2695420235a1ace8817a595a6f930d61"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a45ac1eeccf8f4d022769b35077abc912"><td class="memItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
-__forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a45ac1eeccf8f4d022769b35077abc912">ExclusiveSum</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T &amp;aggregate)</td></tr>
-<tr class="memdesc:a45ac1eeccf8f4d022769b35077abc912"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive prefix sum in each logical warp. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>.  <a href="#a45ac1eeccf8f4d022769b35077abc912"></a><br/></td></tr>
-<tr class="separator:a45ac1eeccf8f4d022769b35077abc912"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a163b5f5f377b3580864c5942a6beb539"><td class="memItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
-__forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a163b5f5f377b3580864c5942a6beb539">ExclusiveSum</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T &amp;aggregate, T &amp;warp_prefix)</td></tr>
-<tr class="memdesc:a163b5f5f377b3580864c5942a6beb539"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive prefix sum in each logical warp. The <code>warp_prefix</code> value from thread-lane<sub>0</sub> is applied to all scan outputs. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>. The <code>warp_prefix</code> is further updated by the value of <code>aggregate</code>.  <a href="#a163b5f5f377b3580864c5942a6beb539"></a><br/></td></tr>
-<tr class="separator:a163b5f5f377b3580864c5942a6beb539"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aa7eb36709cd7f08f204d6176d5c5ec2a"><td class="memItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
+__forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#aa7eb36709cd7f08f204d6176d5c5ec2a">ExclusiveSum</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T &amp;local_aggregate)</td></tr>
+<tr class="memdesc:aa7eb36709cd7f08f204d6176d5c5ec2a"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive prefix sum in each logical warp. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>.  <a href="#aa7eb36709cd7f08f204d6176d5c5ec2a"></a><br/></td></tr>
+<tr class="separator:aa7eb36709cd7f08f204d6176d5c5ec2a"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a6b547cd4f3a07928c411bc3db8eb6d43"><td class="memTemplParams" colspan="2">template&lt;typename WarpPrefixOp &gt; </td></tr>
+<tr class="memitem:a6b547cd4f3a07928c411bc3db8eb6d43"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
+__forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a6b547cd4f3a07928c411bc3db8eb6d43">ExclusiveSum</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T &amp;local_aggregate, WarpPrefixOp &amp;warp_prefix_op)</td></tr>
+<tr class="memdesc:a6b547cd4f3a07928c411bc3db8eb6d43"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive prefix sum in each logical warp. The functor <code>warp_prefix_op</code> is evaluated by <em>warp-lane</em><sub>0</sub> to provide the preceding (or "base") value that logically prefixes the warp's scan inputs. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>. The <code>warp_prefix_op</code> is further updated by the value of <code>aggregate</code>.  <a href="#a6b547cd4f3a07928c411bc3db8eb6d43"></a><br/></td></tr>
+<tr class="separator:a6b547cd4f3a07928c411bc3db8eb6d43"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr><td colspan="2"><div class="groupHeader">Inclusive prefix scans</div></td></tr>
 <tr class="memitem:a9f0397ded5ce89a8750dc8fe10078f3e"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp &gt; </td></tr>
 <tr class="memitem:a9f0397ded5ce89a8750dc8fe10078f3e"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a9f0397ded5ce89a8750dc8fe10078f3e">InclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, ScanOp scan_op)</td></tr>
 <tr class="memdesc:a9f0397ded5ce89a8750dc8fe10078f3e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive prefix sum using the specified binary scan functor in each logical warp.  <a href="#a9f0397ded5ce89a8750dc8fe10078f3e"></a><br/></td></tr>
 <tr class="separator:a9f0397ded5ce89a8750dc8fe10078f3e"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a1892b8790cb33405640c9e7b3ca5a91b"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp &gt; </td></tr>
-<tr class="memitem:a1892b8790cb33405640c9e7b3ca5a91b"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
-__forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a1892b8790cb33405640c9e7b3ca5a91b">InclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, ScanOp scan_op, T &amp;aggregate)</td></tr>
-<tr class="memdesc:a1892b8790cb33405640c9e7b3ca5a91b"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive prefix sum using the specified binary scan functor in each logical warp. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>.  <a href="#a1892b8790cb33405640c9e7b3ca5a91b"></a><br/></td></tr>
-<tr class="separator:a1892b8790cb33405640c9e7b3ca5a91b"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a16b5ab8edbd37b8396b2fd0013f81f4f"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp &gt; </td></tr>
-<tr class="memitem:a16b5ab8edbd37b8396b2fd0013f81f4f"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
-__forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a16b5ab8edbd37b8396b2fd0013f81f4f">InclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, ScanOp scan_op, T &amp;aggregate, T &amp;warp_prefix)</td></tr>
-<tr class="memdesc:a16b5ab8edbd37b8396b2fd0013f81f4f"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive prefix sum using the specified binary scan functor in each logical warp. The <code>warp_prefix</code> value from thread-lane<sub>0</sub> is applied to all scan outputs. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>. The <code>warp_prefix</code> is further updated by the value of <code>aggregate</code>.  <a href="#a16b5ab8edbd37b8396b2fd0013f81f4f"></a><br/></td></tr>
-<tr class="separator:a16b5ab8edbd37b8396b2fd0013f81f4f"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ad71a09a779d9ee35d1241cf0fa0fae06"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp &gt; </td></tr>
+<tr class="memitem:ad71a09a779d9ee35d1241cf0fa0fae06"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
+__forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#ad71a09a779d9ee35d1241cf0fa0fae06">InclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, ScanOp scan_op, T &amp;local_aggregate)</td></tr>
+<tr class="memdesc:ad71a09a779d9ee35d1241cf0fa0fae06"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive prefix sum using the specified binary scan functor in each logical warp. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>.  <a href="#ad71a09a779d9ee35d1241cf0fa0fae06"></a><br/></td></tr>
+<tr class="separator:ad71a09a779d9ee35d1241cf0fa0fae06"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:acceb480d6f31b78bdc242340e8b95a30"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp , typename WarpPrefixOp &gt; </td></tr>
+<tr class="memitem:acceb480d6f31b78bdc242340e8b95a30"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
+__forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#acceb480d6f31b78bdc242340e8b95a30">InclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, ScanOp scan_op, T &amp;local_aggregate, WarpPrefixOp &amp;warp_prefix_op)</td></tr>
+<tr class="memdesc:acceb480d6f31b78bdc242340e8b95a30"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive prefix sum using the specified binary scan functor in each logical warp. The functor <code>warp_prefix_op</code> is evaluated by <em>warp-lane</em><sub>0</sub> to provide the preceding (or "base") value that logically prefixes the warp's scan inputs. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>. The <code>warp_prefix_op</code> is further updated by the value of <code>aggregate</code>.  <a href="#acceb480d6f31b78bdc242340e8b95a30"></a><br/></td></tr>
+<tr class="separator:acceb480d6f31b78bdc242340e8b95a30"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr><td colspan="2"><div class="groupHeader">Exclusive prefix scans</div></td></tr>
 <tr class="memitem:a0f12aef5d3fa15ff13e59876b2983ce1"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp &gt; </td></tr>
 <tr class="memitem:a0f12aef5d3fa15ff13e59876b2983ce1"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a0f12aef5d3fa15ff13e59876b2983ce1">ExclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T identity, ScanOp scan_op)</td></tr>
 <tr class="memdesc:a0f12aef5d3fa15ff13e59876b2983ce1"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive prefix scan using the specified binary scan functor in each logical warp.  <a href="#a0f12aef5d3fa15ff13e59876b2983ce1"></a><br/></td></tr>
 <tr class="separator:a0f12aef5d3fa15ff13e59876b2983ce1"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a2af3a3131d0657f8e4066acc312c1154"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp &gt; </td></tr>
-<tr class="memitem:a2af3a3131d0657f8e4066acc312c1154"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
-__forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a2af3a3131d0657f8e4066acc312c1154">ExclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T identity, ScanOp scan_op, T &amp;aggregate)</td></tr>
-<tr class="memdesc:a2af3a3131d0657f8e4066acc312c1154"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive prefix scan using the specified binary scan functor in each logical warp. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>.  <a href="#a2af3a3131d0657f8e4066acc312c1154"></a><br/></td></tr>
-<tr class="separator:a2af3a3131d0657f8e4066acc312c1154"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:aa1ac1c9b53d7b930284820821632ce20"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp &gt; </td></tr>
-<tr class="memitem:aa1ac1c9b53d7b930284820821632ce20"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
-__forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#aa1ac1c9b53d7b930284820821632ce20">ExclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T identity, ScanOp scan_op, T &amp;aggregate, T &amp;warp_prefix)</td></tr>
-<tr class="memdesc:aa1ac1c9b53d7b930284820821632ce20"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive prefix scan using the specified binary scan functor in each logical warp. The <code>warp_prefix</code> value from thread-lane<sub>0</sub> is applied to all scan outputs. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>. The <code>warp_prefix</code> is further updated by the value of <code>aggregate</code>.  <a href="#aa1ac1c9b53d7b930284820821632ce20"></a><br/></td></tr>
-<tr class="separator:aa1ac1c9b53d7b930284820821632ce20"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ac3b116a8cd2bcc27a7107e3e789328bd"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp &gt; </td></tr>
+<tr class="memitem:ac3b116a8cd2bcc27a7107e3e789328bd"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
+__forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#ac3b116a8cd2bcc27a7107e3e789328bd">ExclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T identity, ScanOp scan_op, T &amp;local_aggregate)</td></tr>
+<tr class="memdesc:ac3b116a8cd2bcc27a7107e3e789328bd"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive prefix scan using the specified binary scan functor in each logical warp. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>.  <a href="#ac3b116a8cd2bcc27a7107e3e789328bd"></a><br/></td></tr>
+<tr class="separator:ac3b116a8cd2bcc27a7107e3e789328bd"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a889e448ffed5844afa419d9e48bf9754"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp , typename WarpPrefixOp &gt; </td></tr>
+<tr class="memitem:a889e448ffed5844afa419d9e48bf9754"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
+__forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a889e448ffed5844afa419d9e48bf9754">ExclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T identity, ScanOp scan_op, T &amp;local_aggregate, WarpPrefixOp &amp;warp_prefix_op)</td></tr>
+<tr class="memdesc:a889e448ffed5844afa419d9e48bf9754"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive prefix scan using the specified binary scan functor in each logical warp. The functor <code>warp_prefix_op</code> is evaluated by <em>warp-lane</em><sub>0</sub> to provide the preceding (or "base") value that logically prefixes the warp's scan inputs. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>. The <code>warp_prefix_op</code> is further updated by the value of <code>aggregate</code>.  <a href="#a889e448ffed5844afa419d9e48bf9754"></a><br/></td></tr>
+<tr class="separator:a889e448ffed5844afa419d9e48bf9754"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr><td colspan="2"><div class="groupHeader">Exclusive prefix scans (without supplied identity)</div></td></tr>
 <tr class="memitem:ae84a95431640ff2d450c4b0a98dd826e"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp &gt; </td></tr>
 <tr class="memitem:ae84a95431640ff2d450c4b0a98dd826e"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#ae84a95431640ff2d450c4b0a98dd826e">ExclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, ScanOp scan_op)</td></tr>
 <tr class="memdesc:ae84a95431640ff2d450c4b0a98dd826e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive prefix scan using the specified binary scan functor in each logical warp. Because no identity value is supplied, the <code>output</code> computed for thread-lane<sub>0</sub> is invalid.  <a href="#ae84a95431640ff2d450c4b0a98dd826e"></a><br/></td></tr>
 <tr class="separator:ae84a95431640ff2d450c4b0a98dd826e"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:aed1e6efb0f059852e81884f7264a3fe7"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp &gt; </td></tr>
-<tr class="memitem:aed1e6efb0f059852e81884f7264a3fe7"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
-__forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#aed1e6efb0f059852e81884f7264a3fe7">ExclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, ScanOp scan_op, T &amp;aggregate)</td></tr>
-<tr class="memdesc:aed1e6efb0f059852e81884f7264a3fe7"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive prefix scan using the specified binary scan functor in each logical warp. Because no identity value is supplied, the <code>output</code> computed for thread-lane<sub>0</sub> is invalid. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>.  <a href="#aed1e6efb0f059852e81884f7264a3fe7"></a><br/></td></tr>
-<tr class="separator:aed1e6efb0f059852e81884f7264a3fe7"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ac2bcdc7488f883b7ed96da02ac129095"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp &gt; </td></tr>
-<tr class="memitem:ac2bcdc7488f883b7ed96da02ac129095"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
-__forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#ac2bcdc7488f883b7ed96da02ac129095">ExclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, ScanOp scan_op, T &amp;aggregate, T &amp;warp_prefix)</td></tr>
-<tr class="memdesc:ac2bcdc7488f883b7ed96da02ac129095"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive prefix scan using the specified binary scan functor in each logical warp. Because no identity value is supplied, the <code>output</code> computed for thread-thread-lane<sub>0</sub> is invalid. The <code>warp_prefix</code> value from thread-thread-lane<sub>0</sub> is applied to all scan outputs. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-thread-lane<sub>0</sub>. The <code>warp_prefix</code> is further updated by the value of <code>aggregate</code>.  <a href="#ac2bcdc7488f883b7ed96da02ac129095"></a><br/></td></tr>
-<tr class="separator:ac2bcdc7488f883b7ed96da02ac129095"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aa9cd34377974a8d71d043c1930a43d5b"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp &gt; </td></tr>
+<tr class="memitem:aa9cd34377974a8d71d043c1930a43d5b"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
+__forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#aa9cd34377974a8d71d043c1930a43d5b">ExclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, ScanOp scan_op, T &amp;local_aggregate)</td></tr>
+<tr class="memdesc:aa9cd34377974a8d71d043c1930a43d5b"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive prefix scan using the specified binary scan functor in each logical warp. Because no identity value is supplied, the <code>output</code> computed for thread-lane<sub>0</sub> is invalid. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>.  <a href="#aa9cd34377974a8d71d043c1930a43d5b"></a><br/></td></tr>
+<tr class="separator:aa9cd34377974a8d71d043c1930a43d5b"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aa5bae576a6c632b3cc95628af315065f"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp , typename WarpPrefixOp &gt; </td></tr>
+<tr class="memitem:aa5bae576a6c632b3cc95628af315065f"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
+__forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#aa5bae576a6c632b3cc95628af315065f">ExclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, ScanOp scan_op, T &amp;local_aggregate, WarpPrefixOp &amp;warp_prefix_op)</td></tr>
+<tr class="memdesc:aa5bae576a6c632b3cc95628af315065f"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive prefix scan using the specified binary scan functor in each logical warp. The <code>warp_prefix_op</code> value from thread-thread-lane<sub>0</sub> is applied to all scan outputs. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-thread-lane<sub>0</sub>. The <code>warp_prefix_op</code> is further updated by the value of <code>aggregate</code>.  <a href="#aa5bae576a6c632b3cc95628af315065f"></a><br/></td></tr>
+<tr class="separator:aa5bae576a6c632b3cc95628af315065f"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><h3>template&lt;typename T, int WARPS, int LOGICAL_WARP_THREADS = DeviceProps::WARP_THREADS&gt;<br/>
@@ -198,7 +200,7 @@ class cub::WarpScan&lt; T, WARPS, LOGICAL_WARP_THREADS &gt;</h3>
 .</div></div>
  <p><b>Overview</b> </p>
 <dl class="section user"><dt></dt><dd>Given a list of input elements and a binary reduction operator, <em>prefix scan</em> produces an output list where each element is computed to be the reduction of the elements occurring earlier in the input list. <em>Prefix sum</em> connotes a prefix scan with the addition operator. The term <em>inclusive</em> means that each result includes the corresponding input operand in the partial sum. The term <em>exclusive</em> means that each result does not include the corresponding input operand in the partial reduction.</dd></dl>
-<dl class="section user"><dt></dt><dd>These parallel prefix scan variants assume the input and output lists to be logically partitioned among threads with warp thread-lane-<em>i</em> having the <em>i</em><sup>th</sup> input and output elements. To minimize synchronization overhead for operations involving the cumulative <code>aggregate</code> and <code>warp_prefix</code>, these values are only valid in thread-lane<sub>0</sub>.</dd></dl>
+<dl class="section user"><dt></dt><dd>These parallel prefix scan variants assume the input and output lists to be logically partitioned among threads with warp thread-lane-<em>i</em> having the <em>i</em><sup>th</sup> input and output elements. To minimize synchronization overhead for operations involving the cumulative <code>aggregate</code> and <code>warp_prefix_op</code>, these values are only valid in thread-lane<sub>0</sub>.</dd></dl>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
     <tr><td class="paramname">T</td><td>The scan input/output element type </td></tr>
@@ -276,12 +278,12 @@ class cub::WarpScan&lt; T, WARPS, LOGICAL_WARP_THREADS &gt;</h3>
 <div class="line">    <span class="comment">// Perform prefix sum of 2s, all seeded with a warp prefix value of 10</span></div>
 <div class="line">    <span class="keywordflow">if</span> (threadIdx.x &lt; 32)</div>
 <div class="line">    {</div>
-<div class="line">        <span class="keywordtype">int</span> output, aggregate, input = 2, warp_prefix = 10;</div>
-<div class="line">        <a class="code" href="classcub_1_1_warp_scan.html#a2695420235a1ace8817a595a6f930d61" title="Computes an exclusive prefix sum in each logical warp.">WarpScan::ExclusiveSum</a>(smem_storage, input, output, warp_prefix, aggregate);</div>
+<div class="line">        <span class="keywordtype">int</span> output, aggregate, input = 2, warp_prefix_op = 10;</div>
+<div class="line">        <a class="code" href="classcub_1_1_warp_scan.html#a2695420235a1ace8817a595a6f930d61" title="Computes an exclusive prefix sum in each logical warp.">WarpScan::ExclusiveSum</a>(smem_storage, input, output, warp_prefix_op, local_aggregate);</div>
 <div class="line"></div>
 <div class="line">        printf(<span class="stringliteral">&quot;tid(%d) output(%d)\n\n&quot;</span>, threadIdx.x, output);</div>
 <div class="line">        <span class="keywordflow">if</span> (threadIdx.x == 0)</div>
-<div class="line">            printf(<span class="stringliteral">&quot;computed aggregate(%d), updated warp_prefix(%d)\n&quot;</span>, aggregate, warp_prefix);</div>
+<div class="line">            printf(<span class="stringliteral">&quot;computed aggregate(%d), updated warp_prefix_op(%d)\n&quot;</span>, aggregate, warp_prefix_op);</div>
 <div class="line">    }</div>
 </div><!-- fragment --><p class="startli">Printed output: </p>
 <div class="fragment"><div class="line">tid(0) output(10)</div>
@@ -292,7 +294,7 @@ class cub::WarpScan&lt; T, WARPS, LOGICAL_WARP_THREADS &gt;</h3>
 <div class="line">...</div>
 <div class="line">tid(31) output(72)</div>
 <div class="line"></div>
-<div class="line">computed aggregate(74), udpated warp_prefix(84)</div>
+<div class="line">computed aggregate(74), udpated warp_prefix_op(84)</div>
 </div><!-- fragment --> </li>
 </ul>
 </dd></dl>
@@ -342,15 +344,15 @@ template&lt;typename T , int WARPS, int LOGICAL_WARP_THREADS = DeviceProps::WARP
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Calling thread's input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Calling thread's output. May be aliased with <code>input</code>. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Calling thread's input item. </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Calling thread's output item. May be aliased with <code>input</code>. </td></tr>
   </table>
   </dd>
 </dl>
 
 </div>
 </div>
-<a class="anchor" id="a6665627fc09b719e5bd91c995139c94d"></a>
+<a class="anchor" id="a75fa41f9103a9e7a6cad20bb3164a1fe"></a>
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
@@ -381,7 +383,7 @@ template&lt;typename T , int WARPS, int LOGICAL_WARP_THREADS = DeviceProps::WARP
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">T &amp;&#160;</td>
-          <td class="paramname"><em>aggregate</em>&#160;</td>
+          <td class="paramname"><em>local_aggregate</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -402,20 +404,22 @@ template&lt;typename T , int WARPS, int LOGICAL_WARP_THREADS = DeviceProps::WARP
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Calling thread's input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Calling thread's output. May be aliased with <code>input</code>. </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td>Total aggregate (valid in thread-lane<sub>0</sub>) </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Calling thread's input item. </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Calling thread's output item. May be aliased with <code>input</code>. </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">local_aggregate</td><td><b>[<em>warp-lane</em><sub>0</sub> only]</b> Warp-wide aggregate reduction of input items. </td></tr>
   </table>
   </dd>
 </dl>
 
 </div>
 </div>
-<a class="anchor" id="a751686610b637caaf837c85d4c696345"></a>
+<a class="anchor" id="af2ae27cea962d6907a1d3d83954a2558"></a>
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
 template&lt;typename T , int WARPS, int LOGICAL_WARP_THREADS = DeviceProps::WARP_THREADS&gt; </div>
+<div class="memtemplate">
+template&lt;typename WarpPrefixOp &gt; </div>
 <table class="mlabels">
   <tr>
   <td class="mlabels-left">
@@ -442,13 +446,13 @@ template&lt;typename T , int WARPS, int LOGICAL_WARP_THREADS = DeviceProps::WARP
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">T &amp;&#160;</td>
-          <td class="paramname"><em>aggregate</em>, </td>
+          <td class="paramname"><em>local_aggregate</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">T &amp;&#160;</td>
-          <td class="paramname"><em>warp_prefix</em>&#160;</td>
+          <td class="paramtype">WarpPrefixOp &amp;&#160;</td>
+          <td class="paramname"><em>warp_prefix_op</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -463,16 +467,22 @@ template&lt;typename T , int WARPS, int LOGICAL_WARP_THREADS = DeviceProps::WARP
 </table>
 </div><div class="memdoc">
 
-<p>Computes an inclusive prefix sum in each logical warp. The <code>warp_prefix</code> value from thread-lane<sub>0</sub> is applied to all scan outputs. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>. The <code>warp_prefix</code> is further updated by the value of <code>aggregate</code>. </p>
-<p>The <code>aggregate</code> and <code>warp_prefix</code> are undefined in threads other than thread-lane<sub>0</sub>.</p>
-<p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA. </p>
+<p>Computes an inclusive prefix sum in each logical warp. The functor <code>warp_prefix_op</code> is evaluated by <em>warp-lane</em><sub>0</sub> to provide the preceding (or "base") value that logically prefixes the warp's scan inputs. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>. The <code>warp_prefix_op</code> is further updated by the value of <code>aggregate</code>. </p>
+<p>The <code>aggregate</code> and <code>warp_prefix_op</code> are undefined in threads other than thread-lane<sub>0</sub>.</p>
+<p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA.</p>
+<dl class="tparams"><dt>Template Parameters</dt><dd>
+  <table class="tparams">
+    <tr><td class="paramname">WarpPrefixOp</td><td><b>[inferred]</b> A call-back unary functor of the model operator()(T local_local_aggregate) </td></tr>
+  </table>
+  </dd>
+</dl>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Calling thread's input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Calling thread's output. May be aliased with <code>input</code>. </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td>Total aggregate (valid in thread-lane<sub>0</sub>) </td></tr>
-    <tr><td class="paramdir">[in,out]</td><td class="paramname">warp_prefix</td><td>Warp-wide prefix to seed with (valid in thread-lane<sub>0</sub>). </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Calling thread's input item. </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Calling thread's output item. May be aliased with <code>input</code>. </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">local_aggregate</td><td><b>[<em>warp-lane</em><sub>0</sub> only]</b> Warp-wide aggregate reduction of input items, exclusive of the <code>warp_prefix_op</code> value </td></tr>
+    <tr><td class="paramdir">[in,out]</td><td class="paramname">warp_prefix_op</td><td><b>[<em>warp-lane</em><sub>0</sub> only]</b> A call-back unary functor of the model operator()(T local_local_aggregate) to be run <em>warp-lane</em><sub>0</sub>. When provided the warp-wide aggregate of input items, this functor is expected to return the logical warp-wide prefix to be applied during the scan operation. Can be stateful. </td></tr>
   </table>
   </dd>
 </dl>
@@ -524,15 +534,15 @@ template&lt;typename T , int WARPS, int LOGICAL_WARP_THREADS = DeviceProps::WARP
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Calling thread's input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Calling thread's output. May be aliased with <code>input</code>. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Calling thread's input item. </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Calling thread's output item. May be aliased with <code>input</code>. </td></tr>
   </table>
   </dd>
 </dl>
 
 </div>
 </div>
-<a class="anchor" id="a45ac1eeccf8f4d022769b35077abc912"></a>
+<a class="anchor" id="aa7eb36709cd7f08f204d6176d5c5ec2a"></a>
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
@@ -563,7 +573,7 @@ template&lt;typename T , int WARPS, int LOGICAL_WARP_THREADS = DeviceProps::WARP
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">T &amp;&#160;</td>
-          <td class="paramname"><em>aggregate</em>&#160;</td>
+          <td class="paramname"><em>local_aggregate</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -584,20 +594,22 @@ template&lt;typename T , int WARPS, int LOGICAL_WARP_THREADS = DeviceProps::WARP
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Calling thread's input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Calling thread's output. May be aliased with <code>input</code>. </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td>Total aggregate (valid in thread-lane<sub>0</sub>) </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Calling thread's input item. </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Calling thread's output item. May be aliased with <code>input</code>. </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">local_aggregate</td><td><b>[<em>warp-lane</em><sub>0</sub> only]</b> Warp-wide aggregate reduction of input items. </td></tr>
   </table>
   </dd>
 </dl>
 
 </div>
 </div>
-<a class="anchor" id="a163b5f5f377b3580864c5942a6beb539"></a>
+<a class="anchor" id="a6b547cd4f3a07928c411bc3db8eb6d43"></a>
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
 template&lt;typename T , int WARPS, int LOGICAL_WARP_THREADS = DeviceProps::WARP_THREADS&gt; </div>
+<div class="memtemplate">
+template&lt;typename WarpPrefixOp &gt; </div>
 <table class="mlabels">
   <tr>
   <td class="mlabels-left">
@@ -624,13 +636,13 @@ template&lt;typename T , int WARPS, int LOGICAL_WARP_THREADS = DeviceProps::WARP
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">T &amp;&#160;</td>
-          <td class="paramname"><em>aggregate</em>, </td>
+          <td class="paramname"><em>local_aggregate</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">T &amp;&#160;</td>
-          <td class="paramname"><em>warp_prefix</em>&#160;</td>
+          <td class="paramtype">WarpPrefixOp &amp;&#160;</td>
+          <td class="paramname"><em>warp_prefix_op</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -645,16 +657,22 @@ template&lt;typename T , int WARPS, int LOGICAL_WARP_THREADS = DeviceProps::WARP
 </table>
 </div><div class="memdoc">
 
-<p>Computes an exclusive prefix sum in each logical warp. The <code>warp_prefix</code> value from thread-lane<sub>0</sub> is applied to all scan outputs. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>. The <code>warp_prefix</code> is further updated by the value of <code>aggregate</code>. </p>
-<p>The <code>aggregate</code> and <code>warp_prefix</code> are undefined in threads other than thread-lane<sub>0</sub>.</p>
-<p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA. </p>
+<p>Computes an exclusive prefix sum in each logical warp. The functor <code>warp_prefix_op</code> is evaluated by <em>warp-lane</em><sub>0</sub> to provide the preceding (or "base") value that logically prefixes the warp's scan inputs. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>. The <code>warp_prefix_op</code> is further updated by the value of <code>aggregate</code>. </p>
+<p>The <code>aggregate</code> and <code>warp_prefix_op</code> are undefined in threads other than thread-lane<sub>0</sub>.</p>
+<p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA.</p>
+<dl class="tparams"><dt>Template Parameters</dt><dd>
+  <table class="tparams">
+    <tr><td class="paramname">WarpPrefixOp</td><td><b>[inferred]</b> A call-back unary functor of the model operator()(T local_local_aggregate) </td></tr>
+  </table>
+  </dd>
+</dl>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Calling thread's input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Calling thread's output. May be aliased with <code>input</code>. </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td>Total aggregate (valid in thread-lane<sub>0</sub>). </td></tr>
-    <tr><td class="paramdir">[in,out]</td><td class="paramname">warp_prefix</td><td>Warp-wide prefix to seed with (valid in thread-lane<sub>0</sub>). </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Calling thread's input item. </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Calling thread's output item. May be aliased with <code>input</code>. </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">local_aggregate</td><td><b>[<em>warp-lane</em><sub>0</sub> only]</b> Warp-wide aggregate reduction of input items, exclusive of the <code>warp_prefix_op</code> value. </td></tr>
+    <tr><td class="paramdir">[in,out]</td><td class="paramname">warp_prefix_op</td><td><b>[<em>warp-lane</em><sub>0</sub> only]</b> A call-back unary functor of the model operator()(T local_local_aggregate) to be run <em>warp-lane</em><sub>0</sub>. When provided the warp-wide aggregate of input items, this functor is expected to return the logical warp-wide prefix to be applied during the scan operation. Can be stateful. </td></tr>
   </table>
   </dd>
 </dl>
@@ -720,8 +738,8 @@ template&lt;typename ScanOp &gt; </div>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Calling thread's input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Calling thread's output. May be aliased with <code>input</code>. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Calling thread's input item. </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Calling thread's output item. May be aliased with <code>input</code>. </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">scan_op</td><td>Binary associative scan functor. </td></tr>
   </table>
   </dd>
@@ -729,7 +747,7 @@ template&lt;typename ScanOp &gt; </div>
 
 </div>
 </div>
-<a class="anchor" id="a1892b8790cb33405640c9e7b3ca5a91b"></a>
+<a class="anchor" id="ad71a09a779d9ee35d1241cf0fa0fae06"></a>
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
@@ -768,7 +786,7 @@ template&lt;typename ScanOp &gt; </div>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">T &amp;&#160;</td>
-          <td class="paramname"><em>aggregate</em>&#160;</td>
+          <td class="paramname"><em>local_aggregate</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -795,23 +813,23 @@ template&lt;typename ScanOp &gt; </div>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Calling thread's input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Calling thread's output. May be aliased with <code>input</code>. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Calling thread's input item. </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Calling thread's output item. May be aliased with <code>input</code>. </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">scan_op</td><td>Binary associative scan functor. </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td>Total aggregate (valid in thread-lane<sub>0</sub>) </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">local_aggregate</td><td><b>[<em>warp-lane</em><sub>0</sub> only]</b> Warp-wide aggregate reduction of input items. </td></tr>
   </table>
   </dd>
 </dl>
 
 </div>
 </div>
-<a class="anchor" id="a16b5ab8edbd37b8396b2fd0013f81f4f"></a>
+<a class="anchor" id="acceb480d6f31b78bdc242340e8b95a30"></a>
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
 template&lt;typename T , int WARPS, int LOGICAL_WARP_THREADS = DeviceProps::WARP_THREADS&gt; </div>
 <div class="memtemplate">
-template&lt;typename ScanOp &gt; </div>
+template&lt;typename ScanOp , typename WarpPrefixOp &gt; </div>
 <table class="mlabels">
   <tr>
   <td class="mlabels-left">
@@ -844,13 +862,13 @@ template&lt;typename ScanOp &gt; </div>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">T &amp;&#160;</td>
-          <td class="paramname"><em>aggregate</em>, </td>
+          <td class="paramname"><em>local_aggregate</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">T &amp;&#160;</td>
-          <td class="paramname"><em>warp_prefix</em>&#160;</td>
+          <td class="paramtype">WarpPrefixOp &amp;&#160;</td>
+          <td class="paramname"><em>warp_prefix_op</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -865,23 +883,24 @@ template&lt;typename ScanOp &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p>Computes an inclusive prefix sum using the specified binary scan functor in each logical warp. The <code>warp_prefix</code> value from thread-lane<sub>0</sub> is applied to all scan outputs. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>. The <code>warp_prefix</code> is further updated by the value of <code>aggregate</code>. </p>
-<p>The <code>aggregate</code> and <code>warp_prefix</code> are undefined in threads other than thread-lane<sub>0</sub>.</p>
+<p>Computes an inclusive prefix sum using the specified binary scan functor in each logical warp. The functor <code>warp_prefix_op</code> is evaluated by <em>warp-lane</em><sub>0</sub> to provide the preceding (or "base") value that logically prefixes the warp's scan inputs. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>. The <code>warp_prefix_op</code> is further updated by the value of <code>aggregate</code>. </p>
+<p>The <code>aggregate</code> and <code>warp_prefix_op</code> are undefined in threads other than thread-lane<sub>0</sub>.</p>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
     <tr><td class="paramname">ScanOp</td><td><b>[inferred]</b> Binary scan functor type </td></tr>
+    <tr><td class="paramname">WarpPrefixOp</td><td><b>[inferred]</b> A call-back unary functor of the model operator()(T local_local_aggregate) </td></tr>
   </table>
   </dd>
 </dl>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Calling thread's input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Calling thread's output. May be aliased with <code>input</code>. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Calling thread's input item. </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Calling thread's output item. May be aliased with <code>input</code>. </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">scan_op</td><td>Binary associative scan functor. </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td>Total aggregate (valid in thread-lane<sub>0</sub>). </td></tr>
-    <tr><td class="paramdir">[in,out]</td><td class="paramname">warp_prefix</td><td>Warp-wide prefix to seed with (valid in thread-lane<sub>0</sub>). </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">local_aggregate</td><td><b>[<em>warp-lane</em><sub>0</sub> only]</b> Warp-wide aggregate reduction of input items, exclusive of the <code>warp_prefix_op</code> value. </td></tr>
+    <tr><td class="paramdir">[in,out]</td><td class="paramname">warp_prefix_op</td><td><b>[<em>warp-lane</em><sub>0</sub> only]</b> A call-back unary functor of the model operator()(T local_local_aggregate) to be run <em>warp-lane</em><sub>0</sub>. When provided the warp-wide aggregate of input items, this functor is expected to return the logical warp-wide prefix to be applied during the scan operation. Can be stateful. </td></tr>
   </table>
   </dd>
 </dl>
@@ -953,8 +972,8 @@ template&lt;typename ScanOp &gt; </div>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Calling thread's input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Calling thread's output. May be aliased with <code>input</code>. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Calling thread's input item. </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Calling thread's output item. May be aliased with <code>input</code>. </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">identity</td><td>Identity value. </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">scan_op</td><td>Binary associative scan functor. </td></tr>
   </table>
@@ -963,7 +982,7 @@ template&lt;typename ScanOp &gt; </div>
 
 </div>
 </div>
-<a class="anchor" id="a2af3a3131d0657f8e4066acc312c1154"></a>
+<a class="anchor" id="ac3b116a8cd2bcc27a7107e3e789328bd"></a>
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
@@ -1008,7 +1027,7 @@ template&lt;typename ScanOp &gt; </div>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">T &amp;&#160;</td>
-          <td class="paramname"><em>aggregate</em>&#160;</td>
+          <td class="paramname"><em>local_aggregate</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -1035,24 +1054,24 @@ template&lt;typename ScanOp &gt; </div>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Calling thread's input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Calling thread's output. May be aliased with <code>input</code>. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Calling thread's input item. </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Calling thread's output item. May be aliased with <code>input</code>. </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">identity</td><td>Identity value. </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">scan_op</td><td>Binary associative scan functor. </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td>Total aggregate (valid in thread-lane<sub>0</sub>) </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">local_aggregate</td><td><b>[<em>warp-lane</em><sub>0</sub> only]</b> Warp-wide aggregate reduction of input items. </td></tr>
   </table>
   </dd>
 </dl>
 
 </div>
 </div>
-<a class="anchor" id="aa1ac1c9b53d7b930284820821632ce20"></a>
+<a class="anchor" id="a889e448ffed5844afa419d9e48bf9754"></a>
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
 template&lt;typename T , int WARPS, int LOGICAL_WARP_THREADS = DeviceProps::WARP_THREADS&gt; </div>
 <div class="memtemplate">
-template&lt;typename ScanOp &gt; </div>
+template&lt;typename ScanOp , typename WarpPrefixOp &gt; </div>
 <table class="mlabels">
   <tr>
   <td class="mlabels-left">
@@ -1091,13 +1110,13 @@ template&lt;typename ScanOp &gt; </div>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">T &amp;&#160;</td>
-          <td class="paramname"><em>aggregate</em>, </td>
+          <td class="paramname"><em>local_aggregate</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">T &amp;&#160;</td>
-          <td class="paramname"><em>warp_prefix</em>&#160;</td>
+          <td class="paramtype">WarpPrefixOp &amp;&#160;</td>
+          <td class="paramname"><em>warp_prefix_op</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -1112,24 +1131,25 @@ template&lt;typename ScanOp &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p>Computes an exclusive prefix scan using the specified binary scan functor in each logical warp. The <code>warp_prefix</code> value from thread-lane<sub>0</sub> is applied to all scan outputs. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>. The <code>warp_prefix</code> is further updated by the value of <code>aggregate</code>. </p>
-<p>The <code>aggregate</code> and <code>warp_prefix</code> are undefined in threads other than thread-lane<sub>0</sub>.</p>
+<p>Computes an exclusive prefix scan using the specified binary scan functor in each logical warp. The functor <code>warp_prefix_op</code> is evaluated by <em>warp-lane</em><sub>0</sub> to provide the preceding (or "base") value that logically prefixes the warp's scan inputs. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>. The <code>warp_prefix_op</code> is further updated by the value of <code>aggregate</code>. </p>
+<p>The <code>aggregate</code> and <code>warp_prefix_op</code> are undefined in threads other than thread-lane<sub>0</sub>.</p>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
     <tr><td class="paramname">ScanOp</td><td><b>[inferred]</b> Binary scan functor type </td></tr>
+    <tr><td class="paramname">WarpPrefixOp</td><td><b>[inferred]</b> A call-back unary functor of the model operator()(T local_local_aggregate) </td></tr>
   </table>
   </dd>
 </dl>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Calling thread's input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Calling thread's output. May be aliased with <code>input</code>. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Calling thread's input item. </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Calling thread's output item. May be aliased with <code>input</code>. </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">identity</td><td>Identity value. </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">scan_op</td><td>Binary associative scan functor. </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td>Total aggregate (valid in thread-lane<sub>0</sub>). </td></tr>
-    <tr><td class="paramdir">[in,out]</td><td class="paramname">warp_prefix</td><td>Warp-wide prefix to seed with (valid in thread-lane<sub>0</sub>). </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">local_aggregate</td><td><b>[<em>warp-lane</em><sub>0</sub> only]</b> Warp-wide aggregate reduction of input items, exclusive of the <code>warp_prefix_op</code> value. </td></tr>
+    <tr><td class="paramdir">[in,out]</td><td class="paramname">warp_prefix_op</td><td><b>[<em>warp-lane</em><sub>0</sub> only]</b> A call-back unary functor of the model operator()(T local_local_aggregate) to be run <em>warp-lane</em><sub>0</sub>. When provided the warp-wide aggregate of input items, this functor is expected to return the logical warp-wide prefix to be applied during the scan operation. Can be stateful. </td></tr>
   </table>
   </dd>
 </dl>
@@ -1195,8 +1215,8 @@ template&lt;typename ScanOp &gt; </div>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Calling thread's input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Calling thread's output. May be aliased with <code>input</code>. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Calling thread's input item. </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Calling thread's output item. May be aliased with <code>input</code>. </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">scan_op</td><td>Binary associative scan functor. </td></tr>
   </table>
   </dd>
@@ -1204,7 +1224,7 @@ template&lt;typename ScanOp &gt; </div>
 
 </div>
 </div>
-<a class="anchor" id="aed1e6efb0f059852e81884f7264a3fe7"></a>
+<a class="anchor" id="aa9cd34377974a8d71d043c1930a43d5b"></a>
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
@@ -1243,7 +1263,7 @@ template&lt;typename ScanOp &gt; </div>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">T &amp;&#160;</td>
-          <td class="paramname"><em>aggregate</em>&#160;</td>
+          <td class="paramname"><em>local_aggregate</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -1270,23 +1290,23 @@ template&lt;typename ScanOp &gt; </div>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Calling thread's input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Calling thread's output. May be aliased with <code>input</code>. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Calling thread's input item. </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Calling thread's output item. May be aliased with <code>input</code>. </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">scan_op</td><td>Binary associative scan functor. </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td>Total aggregate (valid in thread-lane<sub>0</sub>) </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">local_aggregate</td><td><b>[<em>warp-lane</em><sub>0</sub> only]</b> Warp-wide aggregate reduction of input items. </td></tr>
   </table>
   </dd>
 </dl>
 
 </div>
 </div>
-<a class="anchor" id="ac2bcdc7488f883b7ed96da02ac129095"></a>
+<a class="anchor" id="aa5bae576a6c632b3cc95628af315065f"></a>
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
 template&lt;typename T , int WARPS, int LOGICAL_WARP_THREADS = DeviceProps::WARP_THREADS&gt; </div>
 <div class="memtemplate">
-template&lt;typename ScanOp &gt; </div>
+template&lt;typename ScanOp , typename WarpPrefixOp &gt; </div>
 <table class="mlabels">
   <tr>
   <td class="mlabels-left">
@@ -1319,13 +1339,13 @@ template&lt;typename ScanOp &gt; </div>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">T &amp;&#160;</td>
-          <td class="paramname"><em>aggregate</em>, </td>
+          <td class="paramname"><em>local_aggregate</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">T &amp;&#160;</td>
-          <td class="paramname"><em>warp_prefix</em>&#160;</td>
+          <td class="paramtype">WarpPrefixOp &amp;&#160;</td>
+          <td class="paramname"><em>warp_prefix_op</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -1340,23 +1360,24 @@ template&lt;typename ScanOp &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p>Computes an exclusive prefix scan using the specified binary scan functor in each logical warp. Because no identity value is supplied, the <code>output</code> computed for thread-thread-lane<sub>0</sub> is invalid. The <code>warp_prefix</code> value from thread-thread-lane<sub>0</sub> is applied to all scan outputs. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-thread-lane<sub>0</sub>. The <code>warp_prefix</code> is further updated by the value of <code>aggregate</code>. </p>
-<p>The <code>aggregate</code> and <code>warp_prefix</code> are undefined in threads other than thread-lane<sub>0</sub>.</p>
+<p>Computes an exclusive prefix scan using the specified binary scan functor in each logical warp. The <code>warp_prefix_op</code> value from thread-thread-lane<sub>0</sub> is applied to all scan outputs. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-thread-lane<sub>0</sub>. The <code>warp_prefix_op</code> is further updated by the value of <code>aggregate</code>. </p>
+<p>The <code>aggregate</code> and <code>warp_prefix_op</code> are undefined in threads other than thread-lane<sub>0</sub>.</p>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA.</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
     <tr><td class="paramname">ScanOp</td><td><b>[inferred]</b> Binary scan functor type </td></tr>
+    <tr><td class="paramname">WarpPrefixOp</td><td><b>[inferred]</b> A call-back unary functor of the model operator()(T local_local_aggregate) </td></tr>
   </table>
   </dd>
 </dl>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Calling thread's input </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Calling thread's output. May be aliased with <code>input</code>. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Calling thread's input item. </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">output</td><td>Calling thread's output item. May be aliased with <code>input</code>. </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">scan_op</td><td>Binary associative scan functor. </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">aggregate</td><td>Total aggregate (valid in thread-lane<sub>0</sub>). </td></tr>
-    <tr><td class="paramdir">[in,out]</td><td class="paramname">warp_prefix</td><td>Warp-wide prefix to seed with (valid in thread-lane<sub>0</sub>). </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">local_aggregate</td><td><b>[<em>warp-lane</em><sub>0</sub> only]</b> Warp-wide aggregate reduction of input items, exclusive of the <code>warp_prefix_op</code> value. </td></tr>
+    <tr><td class="paramdir">[in,out]</td><td class="paramname">warp_prefix_op</td><td><b>[<em>warp-lane</em><sub>0</sub> only]</b> A call-back unary functor of the model operator()(T local_local_aggregate) to be run <em>warp-lane</em><sub>0</sub>. When provided the warp-wide aggregate of input items, this functor is expected to return the logical warp-wide prefix to be applied during the scan operation. Can be stateful. </td></tr>
   </table>
   </dd>
 </dl>
@@ -1369,7 +1390,7 @@ template&lt;typename ScanOp &gt; </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Nov 29 2012 13:32:24 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
+Generated on Wed Jan 30 2013 08:55:39 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
 <img class="footer" src="doxygen.png" alt="doxygen"/>
 </a> 1.8.2
 </small></address>

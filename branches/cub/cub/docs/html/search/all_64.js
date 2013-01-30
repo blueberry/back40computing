@@ -1,5 +1,5 @@
 var searchData=
 [
-  ['debug',['Debug',['../group___host_util.html#ga15423327604e2b6c66e2411e392c6e89',1,'cub::Debug(cudaError_t error, const char *message, const char *filename, int line)'],['../group___host_util.html#ga60814b4e5cfe6db7469dd8e081771bd0',1,'cub::Debug(cudaError_t error, const char *filename, int line)']]],
+  ['debug',['Debug',['../group___host_util.html#ga0ac6d9c9d88ac0da0d644c88a3b36aa3',1,'cub::Debug(cudaError_t error, const char *message, const char *filename, int line)'],['../group___host_util.html#ga5a175d2a88f63f7f1ab30e8b4f2cfa95',1,'cub::Debug(cudaError_t error, const char *filename, int line)']]],
   ['debug_2ecuh',['debug.cuh',['../debug_8cuh.html',1,'']]]
 ];

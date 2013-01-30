@@ -84,21 +84,23 @@ var searchBox = new SearchBox("searchBox", "search",false,'Search');
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="func-members"></a>
 Functions</h2></td></tr>
-<tr class="memitem:ga15423327604e2b6c66e2411e392c6e89"><td class="memItemLeft" align="right" valign="top">__forceinline__ cudaError_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___host_util.html#ga15423327604e2b6c66e2411e392c6e89">cub::Debug</a> (cudaError_t error, const char *message, const char *filename, int line)</td></tr>
-<tr class="memdesc:ga15423327604e2b6c66e2411e392c6e89"><td class="mdescLeft">&#160;</td><td class="mdescRight">If <code>CUB_STDERR</code> is defined and <code>error</code> is not <code>cudaSuccess</code>, <code>message</code> is printed to <code>stderr</code> along with the supplied source context.  <a href="#ga15423327604e2b6c66e2411e392c6e89"></a><br/></td></tr>
-<tr class="separator:ga15423327604e2b6c66e2411e392c6e89"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga60814b4e5cfe6db7469dd8e081771bd0"><td class="memItemLeft" align="right" valign="top">__forceinline__ cudaError_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___host_util.html#ga60814b4e5cfe6db7469dd8e081771bd0">cub::Debug</a> (cudaError_t error, const char *filename, int line)</td></tr>
-<tr class="memdesc:ga60814b4e5cfe6db7469dd8e081771bd0"><td class="mdescLeft">&#160;</td><td class="mdescRight">If <code>CUB_STDERR</code> is defined and <code>error</code> is not <code>cudaSuccess</code>, the corresponding error message is printed to <code>stderr</code> along with the supplied source context.  <a href="#ga60814b4e5cfe6db7469dd8e081771bd0"></a><br/></td></tr>
-<tr class="separator:ga60814b4e5cfe6db7469dd8e081771bd0"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga0ac6d9c9d88ac0da0d644c88a3b36aa3"><td class="memItemLeft" align="right" valign="top">__host__ __device__ <br class="typebreak"/>
+__forceinline__ cudaError_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___host_util.html#ga0ac6d9c9d88ac0da0d644c88a3b36aa3">cub::Debug</a> (cudaError_t error, const char *message, const char *filename, int line)</td></tr>
+<tr class="memdesc:ga0ac6d9c9d88ac0da0d644c88a3b36aa3"><td class="mdescLeft">&#160;</td><td class="mdescRight">If <code>CUB_STDERR</code> is defined and <code>error</code> is not <code>cudaSuccess</code>, <code>message</code> is printed to <code>stderr</code> along with the supplied source context.  <a href="#ga0ac6d9c9d88ac0da0d644c88a3b36aa3"></a><br/></td></tr>
+<tr class="separator:ga0ac6d9c9d88ac0da0d644c88a3b36aa3"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga5a175d2a88f63f7f1ab30e8b4f2cfa95"><td class="memItemLeft" align="right" valign="top">__host__ __device__ <br class="typebreak"/>
+__forceinline__ cudaError_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group___host_util.html#ga5a175d2a88f63f7f1ab30e8b4f2cfa95">cub::Debug</a> (cudaError_t error, const char *filename, int line)</td></tr>
+<tr class="memdesc:ga5a175d2a88f63f7f1ab30e8b4f2cfa95"><td class="mdescLeft">&#160;</td><td class="mdescRight">If <code>CUB_STDERR</code> is defined and <code>error</code> is not <code>cudaSuccess</code>, the corresponding error message is printed to <code>stderr</code> along with the supplied source context.  <a href="#ga5a175d2a88f63f7f1ab30e8b4f2cfa95"></a><br/></td></tr>
+<tr class="separator:ga5a175d2a88f63f7f1ab30e8b4f2cfa95"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <h2 class="groupheader">Function Documentation</h2>
-<a class="anchor" id="ga15423327604e2b6c66e2411e392c6e89"></a>
+<a class="anchor" id="ga0ac6d9c9d88ac0da0d644c88a3b36aa3"></a>
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname">__forceinline__ cudaError_t cub::Debug </td>
+          <td class="memname">__host__ __device__ __forceinline__ cudaError_t cub::Debug </td>
           <td>(</td>
           <td class="paramtype">cudaError_t&#160;</td>
           <td class="paramname"><em>error</em>, </td>
@@ -134,12 +136,12 @@ Functions</h2></td></tr>
 
 </div>
 </div>
-<a class="anchor" id="ga60814b4e5cfe6db7469dd8e081771bd0"></a>
+<a class="anchor" id="ga5a175d2a88f63f7f1ab30e8b4f2cfa95"></a>
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname">__forceinline__ cudaError_t cub::Debug </td>
+          <td class="memname">__host__ __device__ __forceinline__ cudaError_t cub::Debug </td>
           <td>(</td>
           <td class="paramtype">cudaError_t&#160;</td>
           <td class="paramname"><em>error</em>, </td>
@@ -172,7 +174,7 @@ Functions</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Nov 29 2012 13:32:24 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
+Generated on Wed Jan 30 2013 08:55:38 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
 <img class="footer" src="doxygen.png" alt="doxygen"/>
 </a> 1.8.2
 </small></address>

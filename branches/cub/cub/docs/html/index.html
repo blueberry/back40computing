@@ -137,7 +137,7 @@ var searchBox = new SearchBox("searchBox", "search",false,'Search');
 <div class="line">     <a class="code" href="group___simt_utils.html#gaba3b58962601c11d7bc2c0addd08565b" title="Load a tile of items across CTA threads directly using the specified cache modifier.">CtaLoadVectorized</a>(data, d_in, 0);</div>
 <div class="line"></div>
 <div class="line">     <span class="comment">// Perform an exclusive prefix sum across the tile of data</span></div>
-<div class="line">     <a class="code" href="classcub_1_1_cta_scan.html#a5ea28e4ec740677272952997c7793075" title="Computes an exclusive CTA-wide prefix scan using addition (+) as the scan operator. Each thread contributes one input element. Also computes the CTA-wide aggregate of all inputs for thread0.">CtaScan::ExclusiveSum</a>(smem_storage, data, data);</div>
+<div class="line">     <a class="code" href="classcub_1_1_cta_scan.html#ac9ab13964a6e3a6e639b61f46ac53eda" title="Computes an exclusive CTA-wide prefix scan using addition (+) as the scan operator. Each thread contributes one input element. The inclusive CTA-wide aggregate of all inputs is computed for thread0.">CtaScan::ExclusiveSum</a>(smem_storage, data, data);</div>
 <div class="line"></div>
 <div class="line">     <span class="comment">// Store a tile of data using vector-load instructions</span></div>
 <div class="line">     <a class="code" href="group___simt_utils.html#ga175a94f15417edb776706412b31dc019" title="Store a tile of items across CTA threads directly using the specified cache modifier.">CtaStoreVectorized</a>(data, d_out, 0);</div>
@@ -222,7 +222,7 @@ var searchBox = new SearchBox("searchBox", "search",false,'Search');
 </div></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Nov 29 2012 13:32:24 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
+Generated on Wed Jan 30 2013 08:55:39 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
 <img class="footer" src="doxygen.png" alt="doxygen"/>
 </a> 1.8.2
 </small></address>

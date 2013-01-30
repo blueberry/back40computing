@@ -211,6 +211,7 @@ public:
 			}
 			if (!CheckCmdLineFlag("quiet")) {
 				printf("Using device %d: %s\n", dev, deviceProp.name);
+				fflush(stdout);
 			}
 
 			error = CubDebug(cudaSetDevice(dev));

@@ -35,7 +35,7 @@ namespace cub {
  * Manages device storage needed for implementing a global software barrier
  * between CTAs in a single grid
  */
-class GridTestBarrier
+class GridBarrier
 {
 protected :
 
@@ -49,7 +49,7 @@ public:
 	/**
 	 * Constructor
 	 */
-	GridTestBarrier() : d_sync(NULL) {}
+	GridBarrier() : d_sync(NULL) {}
 
 
 	/**
@@ -85,7 +85,7 @@ public:
 
 			__syncthreads();
 
-			// Let everyone know it's safe to read their prefix sums
+			// Let everyone know it's safe to proceed
 			for (int peer_block = threadIdx.x; peer_block < gridDim.x; peer_block += blockDim.x)
 			{
 			    d_vol_sync[peer_block] = 0;
@@ -98,7 +98,7 @@ public:
 				// Report in
 			    d_vol_sync[blockIdx.x] = 1;
 
-				// Wait for acknowledgement
+				// Wait for acknowledgment
 				while (ThreadLoad<PTX_LOAD_CG>(d_sync + blockIdx.x) == 1)
 				{
 					__threadfence_block();
@@ -117,7 +117,7 @@ public:
  * Uses RAII for lifetime, i.e., device resources are reclaimed when
  * the destructor is called (e.g., when the logical scope ends).
  */
-class GridTestBarrierLifetime : public GridTestBarrier
+class GridBarrierLifetime : public GridBarrier
 {
 protected:
 
@@ -129,7 +129,7 @@ public:
 	/**
 	 * Constructor
 	 */
-	GridTestBarrierLifetime() : GridTestBarrier(), sync_bytes(0) {}
+	GridBarrierLifetime() : GridBarrier(), sync_bytes(0) {}
 
 
 	/**
@@ -151,7 +151,7 @@ public:
 	/**
 	 * Destructor
 	 */
-	virtual ~GridTestBarrierLifetime()
+	virtual ~GridBarrierLifetime()
 	{
 		HostReset();
 	}

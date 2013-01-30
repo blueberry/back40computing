@@ -101,33 +101,49 @@ CTA direct loads (blocked arrangement)</h2></td></tr>
 <tr class="memitem:gaf34b5a5a058645a9527a36fd24a2b175"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#gaf34b5a5a058645a9527a36fd24a2b175">cub::CtaLoadDirect</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset)</td></tr>
 <tr class="memdesc:gaf34b5a5a058645a9527a36fd24a2b175"><td class="mdescLeft">&#160;</td><td class="mdescRight">Load a tile of items across CTA threads directly.  <a href="#gaf34b5a5a058645a9527a36fd24a2b175"></a><br/></td></tr>
 <tr class="separator:gaf34b5a5a058645a9527a36fd24a2b175"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga9e7c939434d5446f03eb674349fc6551"><td class="memTemplParams" colspan="2">template&lt;PtxLoadModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </td></tr>
-<tr class="memitem:ga9e7c939434d5446f03eb674349fc6551"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#ga9e7c939434d5446f03eb674349fc6551">cub::CtaLoadDirect</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset, const SizeT &amp;guarded_elements)</td></tr>
-<tr class="memdesc:ga9e7c939434d5446f03eb674349fc6551"><td class="mdescLeft">&#160;</td><td class="mdescRight">Load a tile of items across CTA threads directly using the specified cache modifier, guarded by range.  <a href="#ga9e7c939434d5446f03eb674349fc6551"></a><br/></td></tr>
-<tr class="separator:ga9e7c939434d5446f03eb674349fc6551"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:gae9bdd49c36d9a6a221dc56290e1a77d8"><td class="memTemplParams" colspan="2">template&lt;typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </td></tr>
-<tr class="memitem:gae9bdd49c36d9a6a221dc56290e1a77d8"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#gae9bdd49c36d9a6a221dc56290e1a77d8">cub::CtaLoadDirect</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset, const SizeT &amp;guarded_elements)</td></tr>
-<tr class="memdesc:gae9bdd49c36d9a6a221dc56290e1a77d8"><td class="mdescLeft">&#160;</td><td class="mdescRight">Load a tile of items across CTA threads directly, guarded by range.  <a href="#gae9bdd49c36d9a6a221dc56290e1a77d8"></a><br/></td></tr>
-<tr class="separator:gae9bdd49c36d9a6a221dc56290e1a77d8"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:gabf7997e61c04ba8e16f2bb7eedad07d5"><td class="memTemplParams" colspan="2">template&lt;PtxLoadModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </td></tr>
+<tr class="memitem:gabf7997e61c04ba8e16f2bb7eedad07d5"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#gabf7997e61c04ba8e16f2bb7eedad07d5">cub::CtaLoadDirect</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset, const SizeT &amp;guarded_items)</td></tr>
+<tr class="memdesc:gabf7997e61c04ba8e16f2bb7eedad07d5"><td class="mdescLeft">&#160;</td><td class="mdescRight">Load a tile of items across CTA threads directly using the specified cache modifier, guarded by range.  <a href="#gabf7997e61c04ba8e16f2bb7eedad07d5"></a><br/></td></tr>
+<tr class="separator:gabf7997e61c04ba8e16f2bb7eedad07d5"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga113d6e324b617932788695f1fd4bd86f"><td class="memTemplParams" colspan="2">template&lt;typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </td></tr>
+<tr class="memitem:ga113d6e324b617932788695f1fd4bd86f"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#ga113d6e324b617932788695f1fd4bd86f">cub::CtaLoadDirect</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset, const SizeT &amp;guarded_items)</td></tr>
+<tr class="memdesc:ga113d6e324b617932788695f1fd4bd86f"><td class="mdescLeft">&#160;</td><td class="mdescRight">Load a tile of items across CTA threads directly, guarded by range.  <a href="#ga113d6e324b617932788695f1fd4bd86f"></a><br/></td></tr>
+<tr class="separator:ga113d6e324b617932788695f1fd4bd86f"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga092faa1c46438f5213093c46cb8bdd91"><td class="memTemplParams" colspan="2">template&lt;PtxLoadModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </td></tr>
+<tr class="memitem:ga092faa1c46438f5213093c46cb8bdd91"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#ga092faa1c46438f5213093c46cb8bdd91">cub::CtaLoadDirect</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset, const SizeT &amp;guarded_items, T oob_default)</td></tr>
+<tr class="memdesc:ga092faa1c46438f5213093c46cb8bdd91"><td class="mdescLeft">&#160;</td><td class="mdescRight">Load a tile of items across CTA threads directly using the specified cache modifier, guarded by range, with assignment for out-of-bound elements.  <a href="#ga092faa1c46438f5213093c46cb8bdd91"></a><br/></td></tr>
+<tr class="separator:ga092faa1c46438f5213093c46cb8bdd91"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga22df987851677dbc47647ea4e861f36e"><td class="memTemplParams" colspan="2">template&lt;typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </td></tr>
+<tr class="memitem:ga22df987851677dbc47647ea4e861f36e"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#ga22df987851677dbc47647ea4e861f36e">cub::CtaLoadDirect</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset, const SizeT &amp;guarded_items, T oob_default)</td></tr>
+<tr class="memdesc:ga22df987851677dbc47647ea4e861f36e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Load a tile of items across CTA threads directly, guarded by range, with assignment for out-of-bound elements.  <a href="#ga22df987851677dbc47647ea4e861f36e"></a><br/></td></tr>
+<tr class="separator:ga22df987851677dbc47647ea4e861f36e"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="member-group"></a>
 CTA direct loads (striped arrangement)</h2></td></tr>
-<tr class="memitem:ga0130723f2bf33cc840440e2600f9d251"><td class="memTemplParams" colspan="2">template&lt;int CTA_THREADS, PtxLoadModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </td></tr>
-<tr class="memitem:ga0130723f2bf33cc840440e2600f9d251"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#ga0130723f2bf33cc840440e2600f9d251">cub::CtaLoadDirectStriped</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset)</td></tr>
-<tr class="memdesc:ga0130723f2bf33cc840440e2600f9d251"><td class="mdescLeft">&#160;</td><td class="mdescRight">Load striped tile directly using the specified cache modifier.  <a href="#ga0130723f2bf33cc840440e2600f9d251"></a><br/></td></tr>
-<tr class="separator:ga0130723f2bf33cc840440e2600f9d251"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga879dec7aaefb8a7d116ae250b1904da0"><td class="memTemplParams" colspan="2">template&lt;int CTA_THREADS, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </td></tr>
+<tr class="memitem:ga879dec7aaefb8a7d116ae250b1904da0"><td class="memTemplParams" colspan="2">template&lt;PtxLoadModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </td></tr>
 <tr class="memitem:ga879dec7aaefb8a7d116ae250b1904da0"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#ga879dec7aaefb8a7d116ae250b1904da0">cub::CtaLoadDirectStriped</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset)</td></tr>
-<tr class="memdesc:ga879dec7aaefb8a7d116ae250b1904da0"><td class="mdescLeft">&#160;</td><td class="mdescRight">Load striped tile directly.  <a href="#ga879dec7aaefb8a7d116ae250b1904da0"></a><br/></td></tr>
+<tr class="memdesc:ga879dec7aaefb8a7d116ae250b1904da0"><td class="mdescLeft">&#160;</td><td class="mdescRight">Load striped tile directly using the specified cache modifier.  <a href="#ga879dec7aaefb8a7d116ae250b1904da0"></a><br/></td></tr>
 <tr class="separator:ga879dec7aaefb8a7d116ae250b1904da0"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga3dae50bf2bae003b6dad2aa4bcac77a4"><td class="memTemplParams" colspan="2">template&lt;int CTA_THREADS, PtxLoadModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </td></tr>
-<tr class="memitem:ga3dae50bf2bae003b6dad2aa4bcac77a4"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#ga3dae50bf2bae003b6dad2aa4bcac77a4">cub::CtaLoadDirectStriped</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset, const SizeT &amp;guarded_elements)</td></tr>
-<tr class="memdesc:ga3dae50bf2bae003b6dad2aa4bcac77a4"><td class="mdescLeft">&#160;</td><td class="mdescRight">Load striped directly tile using the specified cache modifier, guarded by range.  <a href="#ga3dae50bf2bae003b6dad2aa4bcac77a4"></a><br/></td></tr>
-<tr class="separator:ga3dae50bf2bae003b6dad2aa4bcac77a4"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga8c2bfa877fb44a81c97edc2e020e839b"><td class="memTemplParams" colspan="2">template&lt;int CTA_THREADS, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </td></tr>
-<tr class="memitem:ga8c2bfa877fb44a81c97edc2e020e839b"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#ga8c2bfa877fb44a81c97edc2e020e839b">cub::CtaLoadDirectStriped</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset, const SizeT &amp;guarded_elements)</td></tr>
-<tr class="memdesc:ga8c2bfa877fb44a81c97edc2e020e839b"><td class="mdescLeft">&#160;</td><td class="mdescRight">Load striped tile directly, guarded by range.  <a href="#ga8c2bfa877fb44a81c97edc2e020e839b"></a><br/></td></tr>
-<tr class="separator:ga8c2bfa877fb44a81c97edc2e020e839b"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:gae2eaa8a2de931566b7ee6493e26425a2"><td class="memTemplParams" colspan="2">template&lt;typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </td></tr>
+<tr class="memitem:gae2eaa8a2de931566b7ee6493e26425a2"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#gae2eaa8a2de931566b7ee6493e26425a2">cub::CtaLoadDirectStriped</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset)</td></tr>
+<tr class="memdesc:gae2eaa8a2de931566b7ee6493e26425a2"><td class="mdescLeft">&#160;</td><td class="mdescRight">Load striped tile directly.  <a href="#gae2eaa8a2de931566b7ee6493e26425a2"></a><br/></td></tr>
+<tr class="separator:gae2eaa8a2de931566b7ee6493e26425a2"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga7118959cf5536bc6dc562d5508d7e591"><td class="memTemplParams" colspan="2">template&lt;PtxLoadModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </td></tr>
+<tr class="memitem:ga7118959cf5536bc6dc562d5508d7e591"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#ga7118959cf5536bc6dc562d5508d7e591">cub::CtaLoadDirectStriped</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset, const SizeT &amp;guarded_items)</td></tr>
+<tr class="memdesc:ga7118959cf5536bc6dc562d5508d7e591"><td class="mdescLeft">&#160;</td><td class="mdescRight">Load striped directly tile using the specified cache modifier, guarded by range.  <a href="#ga7118959cf5536bc6dc562d5508d7e591"></a><br/></td></tr>
+<tr class="separator:ga7118959cf5536bc6dc562d5508d7e591"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga93e3e2760919d3c02ec27b8633ad00c7"><td class="memTemplParams" colspan="2">template&lt;typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </td></tr>
+<tr class="memitem:ga93e3e2760919d3c02ec27b8633ad00c7"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#ga93e3e2760919d3c02ec27b8633ad00c7">cub::CtaLoadDirectStriped</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset, const SizeT &amp;guarded_items)</td></tr>
+<tr class="memdesc:ga93e3e2760919d3c02ec27b8633ad00c7"><td class="mdescLeft">&#160;</td><td class="mdescRight">Load striped tile directly, guarded by range.  <a href="#ga93e3e2760919d3c02ec27b8633ad00c7"></a><br/></td></tr>
+<tr class="separator:ga93e3e2760919d3c02ec27b8633ad00c7"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:gaf0ce5278cbd4935152c9e34ff12981d2"><td class="memTemplParams" colspan="2">template&lt;PtxLoadModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </td></tr>
+<tr class="memitem:gaf0ce5278cbd4935152c9e34ff12981d2"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#gaf0ce5278cbd4935152c9e34ff12981d2">cub::CtaLoadDirectStriped</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset, const SizeT &amp;guarded_items, T oob_default)</td></tr>
+<tr class="memdesc:gaf0ce5278cbd4935152c9e34ff12981d2"><td class="mdescLeft">&#160;</td><td class="mdescRight">Load striped directly tile using the specified cache modifier, guarded by range, with assignment for out-of-bound elements.  <a href="#gaf0ce5278cbd4935152c9e34ff12981d2"></a><br/></td></tr>
+<tr class="separator:gaf0ce5278cbd4935152c9e34ff12981d2"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga78e0b2d3629305ca0bf6e30a354b2899"><td class="memTemplParams" colspan="2">template&lt;typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </td></tr>
+<tr class="memitem:ga78e0b2d3629305ca0bf6e30a354b2899"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#ga78e0b2d3629305ca0bf6e30a354b2899">cub::CtaLoadDirectStriped</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset, const SizeT &amp;guarded_items, T oob_default)</td></tr>
+<tr class="memdesc:ga78e0b2d3629305ca0bf6e30a354b2899"><td class="mdescLeft">&#160;</td><td class="mdescRight">Load striped tile directly, guarded by range, with assignment for out-of-bound elements.  <a href="#ga78e0b2d3629305ca0bf6e30a354b2899"></a><br/></td></tr>
+<tr class="separator:ga78e0b2d3629305ca0bf6e30a354b2899"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="member-group"></a>
 CTA vectorized loads (blocked arrangement)</h2></td></tr>
@@ -150,32 +166,32 @@ CTA direct stores (blocked arrangement)</h2></td></tr>
 <tr class="memitem:ga9e59974ccc4053d173801489b7a66f37"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#ga9e59974ccc4053d173801489b7a66f37">cub::CtaStoreDirect</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset)</td></tr>
 <tr class="memdesc:ga9e59974ccc4053d173801489b7a66f37"><td class="mdescLeft">&#160;</td><td class="mdescRight">Store a tile of items across CTA threads directly.  <a href="#ga9e59974ccc4053d173801489b7a66f37"></a><br/></td></tr>
 <tr class="separator:ga9e59974ccc4053d173801489b7a66f37"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:gaff77c0e52457fcbd514ea4fea69df6be"><td class="memTemplParams" colspan="2">template&lt;PtxStoreModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </td></tr>
-<tr class="memitem:gaff77c0e52457fcbd514ea4fea69df6be"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#gaff77c0e52457fcbd514ea4fea69df6be">cub::CtaStoreDirect</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset, const SizeT &amp;guarded_elements)</td></tr>
-<tr class="memdesc:gaff77c0e52457fcbd514ea4fea69df6be"><td class="mdescLeft">&#160;</td><td class="mdescRight">Store a tile of items across CTA threads directly using the specified cache modifier, guarded by range.  <a href="#gaff77c0e52457fcbd514ea4fea69df6be"></a><br/></td></tr>
-<tr class="separator:gaff77c0e52457fcbd514ea4fea69df6be"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga2c3bd14d9879a8d552bdd6ce07978c07"><td class="memTemplParams" colspan="2">template&lt;typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </td></tr>
-<tr class="memitem:ga2c3bd14d9879a8d552bdd6ce07978c07"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#ga2c3bd14d9879a8d552bdd6ce07978c07">cub::CtaStoreDirect</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset, const SizeT &amp;guarded_elements)</td></tr>
-<tr class="memdesc:ga2c3bd14d9879a8d552bdd6ce07978c07"><td class="mdescLeft">&#160;</td><td class="mdescRight">Store a tile of items across CTA threads directly, guarded by range.  <a href="#ga2c3bd14d9879a8d552bdd6ce07978c07"></a><br/></td></tr>
-<tr class="separator:ga2c3bd14d9879a8d552bdd6ce07978c07"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga5efa42b537947ff9a45112c6b188ab0f"><td class="memTemplParams" colspan="2">template&lt;PtxStoreModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </td></tr>
+<tr class="memitem:ga5efa42b537947ff9a45112c6b188ab0f"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#ga5efa42b537947ff9a45112c6b188ab0f">cub::CtaStoreDirect</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset, const SizeT &amp;guarded_items)</td></tr>
+<tr class="memdesc:ga5efa42b537947ff9a45112c6b188ab0f"><td class="mdescLeft">&#160;</td><td class="mdescRight">Store a tile of items across CTA threads directly using the specified cache modifier, guarded by range.  <a href="#ga5efa42b537947ff9a45112c6b188ab0f"></a><br/></td></tr>
+<tr class="separator:ga5efa42b537947ff9a45112c6b188ab0f"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga2e0d9e54665e769624508ecbd1c9851e"><td class="memTemplParams" colspan="2">template&lt;typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </td></tr>
+<tr class="memitem:ga2e0d9e54665e769624508ecbd1c9851e"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#ga2e0d9e54665e769624508ecbd1c9851e">cub::CtaStoreDirect</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset, const SizeT &amp;guarded_items)</td></tr>
+<tr class="memdesc:ga2e0d9e54665e769624508ecbd1c9851e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Store a tile of items across CTA threads directly, guarded by range.  <a href="#ga2e0d9e54665e769624508ecbd1c9851e"></a><br/></td></tr>
+<tr class="separator:ga2e0d9e54665e769624508ecbd1c9851e"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="member-group"></a>
 CTA direct stores (striped arrangement)</h2></td></tr>
-<tr class="memitem:ga87048895ba5130b3e1df4bf339fbb934"><td class="memTemplParams" colspan="2">template&lt;int CTA_THREADS, PtxStoreModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </td></tr>
-<tr class="memitem:ga87048895ba5130b3e1df4bf339fbb934"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#ga87048895ba5130b3e1df4bf339fbb934">cub::CtaStoreDirectStriped</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset)</td></tr>
-<tr class="memdesc:ga87048895ba5130b3e1df4bf339fbb934"><td class="mdescLeft">&#160;</td><td class="mdescRight">Store striped tile directly using the specified cache modifier.  <a href="#ga87048895ba5130b3e1df4bf339fbb934"></a><br/></td></tr>
-<tr class="separator:ga87048895ba5130b3e1df4bf339fbb934"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga28803ed44893f5cbe2269be0942ca6f3"><td class="memTemplParams" colspan="2">template&lt;int CTA_THREADS, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </td></tr>
+<tr class="memitem:ga28803ed44893f5cbe2269be0942ca6f3"><td class="memTemplParams" colspan="2">template&lt;PtxStoreModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </td></tr>
 <tr class="memitem:ga28803ed44893f5cbe2269be0942ca6f3"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#ga28803ed44893f5cbe2269be0942ca6f3">cub::CtaStoreDirectStriped</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset)</td></tr>
-<tr class="memdesc:ga28803ed44893f5cbe2269be0942ca6f3"><td class="mdescLeft">&#160;</td><td class="mdescRight">Store striped tile directly.  <a href="#ga28803ed44893f5cbe2269be0942ca6f3"></a><br/></td></tr>
+<tr class="memdesc:ga28803ed44893f5cbe2269be0942ca6f3"><td class="mdescLeft">&#160;</td><td class="mdescRight">Store striped tile directly using the specified cache modifier.  <a href="#ga28803ed44893f5cbe2269be0942ca6f3"></a><br/></td></tr>
 <tr class="separator:ga28803ed44893f5cbe2269be0942ca6f3"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga4950b33a4889a885bc9500b8b95def25"><td class="memTemplParams" colspan="2">template&lt;int CTA_THREADS, PtxStoreModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </td></tr>
-<tr class="memitem:ga4950b33a4889a885bc9500b8b95def25"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#ga4950b33a4889a885bc9500b8b95def25">cub::CtaStoreDirectStriped</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset, const SizeT &amp;guarded_elements)</td></tr>
-<tr class="separator:ga4950b33a4889a885bc9500b8b95def25"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga3a65a1256d95ff1d525d608f640aadff"><td class="memTemplParams" colspan="2">template&lt;int CTA_THREADS, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </td></tr>
-<tr class="memitem:ga3a65a1256d95ff1d525d608f640aadff"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#ga3a65a1256d95ff1d525d608f640aadff">cub::CtaStoreDirectStriped</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset, const SizeT &amp;guarded_elements)</td></tr>
-<tr class="memdesc:ga3a65a1256d95ff1d525d608f640aadff"><td class="mdescLeft">&#160;</td><td class="mdescRight">Store striped tile directly, guarded by range.  <a href="#ga3a65a1256d95ff1d525d608f640aadff"></a><br/></td></tr>
-<tr class="separator:ga3a65a1256d95ff1d525d608f640aadff"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga3af2afbff61053bee87eca20724828cc"><td class="memTemplParams" colspan="2">template&lt;typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </td></tr>
+<tr class="memitem:ga3af2afbff61053bee87eca20724828cc"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#ga3af2afbff61053bee87eca20724828cc">cub::CtaStoreDirectStriped</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset)</td></tr>
+<tr class="memdesc:ga3af2afbff61053bee87eca20724828cc"><td class="mdescLeft">&#160;</td><td class="mdescRight">Store striped tile directly.  <a href="#ga3af2afbff61053bee87eca20724828cc"></a><br/></td></tr>
+<tr class="separator:ga3af2afbff61053bee87eca20724828cc"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga688008cfe32ec59727aa35c8c7d5b573"><td class="memTemplParams" colspan="2">template&lt;PtxStoreModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </td></tr>
+<tr class="memitem:ga688008cfe32ec59727aa35c8c7d5b573"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#ga688008cfe32ec59727aa35c8c7d5b573">cub::CtaStoreDirectStriped</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset, const SizeT &amp;guarded_items)</td></tr>
+<tr class="separator:ga688008cfe32ec59727aa35c8c7d5b573"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:gad2527f2079e7a1f9ad8ba073dcfc3d34"><td class="memTemplParams" colspan="2">template&lt;typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </td></tr>
+<tr class="memitem:gad2527f2079e7a1f9ad8ba073dcfc3d34"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#gad2527f2079e7a1f9ad8ba073dcfc3d34">cub::CtaStoreDirectStriped</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset, const SizeT &amp;guarded_items)</td></tr>
+<tr class="memdesc:gad2527f2079e7a1f9ad8ba073dcfc3d34"><td class="mdescLeft">&#160;</td><td class="mdescRight">Store striped tile directly, guarded by range.  <a href="#gad2527f2079e7a1f9ad8ba073dcfc3d34"></a><br/></td></tr>
+<tr class="separator:gad2527f2079e7a1f9ad8ba073dcfc3d34"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="member-group"></a>
 CTA vectorized stores (blocked arrangement)</h2></td></tr>
@@ -299,7 +315,7 @@ template&lt;typename T , int ITEMS_PER_THREAD, typename InputIterator , typename
 
 </div>
 </div>
-<a class="anchor" id="ga9e7c939434d5446f03eb674349fc6551"></a>
+<a class="anchor" id="gabf7997e61c04ba8e16f2bb7eedad07d5"></a>
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
@@ -327,7 +343,7 @@ template&lt;PtxLoadModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typenam
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">const SizeT &amp;&#160;</td>
-          <td class="paramname"><em>guarded_elements</em>&#160;</td>
+          <td class="paramname"><em>guarded_items</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -354,14 +370,14 @@ template&lt;PtxLoadModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typenam
     <tr><td class="paramdir">[out]</td><td class="paramname">items</td><td>Data to load </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">itr</td><td>Input iterator for loading from </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">cta_offset</td><td>Offset in <code>itr</code> at which to load the tile </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">guarded_elements</td><td>Number of valid items in the tile </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">guarded_items</td><td>Number of valid items in the tile </td></tr>
   </table>
   </dd>
 </dl>
 
 </div>
 </div>
-<a class="anchor" id="gae9bdd49c36d9a6a221dc56290e1a77d8"></a>
+<a class="anchor" id="ga113d6e324b617932788695f1fd4bd86f"></a>
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
@@ -389,7 +405,7 @@ template&lt;typename T , int ITEMS_PER_THREAD, typename InputIterator , typename
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">const SizeT &amp;&#160;</td>
-          <td class="paramname"><em>guarded_elements</em>&#160;</td>
+          <td class="paramname"><em>guarded_items</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -415,18 +431,155 @@ template&lt;typename T , int ITEMS_PER_THREAD, typename InputIterator , typename
     <tr><td class="paramdir">[out]</td><td class="paramname">items</td><td>Data to load </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">itr</td><td>Input iterator for loading from </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">cta_offset</td><td>Offset in <code>itr</code> at which to load the tile </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">guarded_elements</td><td>Number of valid items in the tile </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">guarded_items</td><td>Number of valid items in the tile </td></tr>
   </table>
   </dd>
 </dl>
 
 </div>
 </div>
-<a class="anchor" id="ga0130723f2bf33cc840440e2600f9d251"></a>
+<a class="anchor" id="ga092faa1c46438f5213093c46cb8bdd91"></a>
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int CTA_THREADS, PtxLoadModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </div>
+template&lt;PtxLoadModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </div>
+      <table class="memname">
+        <tr>
+          <td class="memname">__device__ __forceinline__ void cub::CtaLoadDirect </td>
+          <td>(</td>
+          <td class="paramtype">T(&amp;)&#160;</td>
+          <td class="paramname"><em>items</em>[ITEMS_PER_THREAD], </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">InputIterator&#160;</td>
+          <td class="paramname"><em>itr</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const SizeT &amp;&#160;</td>
+          <td class="paramname"><em>cta_offset</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const SizeT &amp;&#160;</td>
+          <td class="paramname"><em>guarded_items</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">T&#160;</td>
+          <td class="paramname"><em>oob_default</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Load a tile of items across CTA threads directly using the specified cache modifier, guarded by range, with assignment for out-of-bound elements. </p>
+<dl class="tparams"><dt>Template Parameters</dt><dd>
+  <table class="tparams">
+    <tr><td class="paramname">MODIFIER</td><td>cub::PtxLoadModifier cache modifier. </td></tr>
+    <tr><td class="paramname">T</td><td><b>[inferred]</b> The data type to load. </td></tr>
+    <tr><td class="paramname">ITEMS_PER_THREAD</td><td><b>[inferred]</b> The number of consecutive items partitioned onto each thread. </td></tr>
+    <tr><td class="paramname">InputIterator</td><td><b>[inferred]</b> The input iterator type (may be a simple pointer). </td></tr>
+    <tr><td class="paramname">SizeT</td><td><b>[inferred]</b> Integer type for offsets</td></tr>
+  </table>
+  </dd>
+</dl>
+<p>The aggregate tile of items is assumed to be partitioned evenly across threads in "blocked" fashion with thread<sub><em>i</em></sub> owning the <em>i</em><sup>th</sup> segment of consecutive elements. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[out]</td><td class="paramname">items</td><td>Data to load </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">itr</td><td>Input iterator for loading from </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">cta_offset</td><td>Offset in <code>itr</code> at which to load the tile </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">guarded_items</td><td>Number of valid items in the tile </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">oob_default</td><td>Default value to assign out-of-bound items </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<a class="anchor" id="ga22df987851677dbc47647ea4e861f36e"></a>
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </div>
+      <table class="memname">
+        <tr>
+          <td class="memname">__device__ __forceinline__ void cub::CtaLoadDirect </td>
+          <td>(</td>
+          <td class="paramtype">T(&amp;)&#160;</td>
+          <td class="paramname"><em>items</em>[ITEMS_PER_THREAD], </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">InputIterator&#160;</td>
+          <td class="paramname"><em>itr</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const SizeT &amp;&#160;</td>
+          <td class="paramname"><em>cta_offset</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const SizeT &amp;&#160;</td>
+          <td class="paramname"><em>guarded_items</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">T&#160;</td>
+          <td class="paramname"><em>oob_default</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Load a tile of items across CTA threads directly, guarded by range, with assignment for out-of-bound elements. </p>
+<dl class="tparams"><dt>Template Parameters</dt><dd>
+  <table class="tparams">
+    <tr><td class="paramname">T</td><td><b>[inferred]</b> The data type to load. </td></tr>
+    <tr><td class="paramname">ITEMS_PER_THREAD</td><td><b>[inferred]</b> The number of consecutive items partitioned onto each thread. </td></tr>
+    <tr><td class="paramname">InputIterator</td><td><b>[inferred]</b> The input iterator type (may be a simple pointer). </td></tr>
+    <tr><td class="paramname">SizeT</td><td><b>[inferred]</b> Integer type for offsets</td></tr>
+  </table>
+  </dd>
+</dl>
+<p>The aggregate tile of items is assumed to be partitioned evenly across threads in "blocked" fashion with thread<sub><em>i</em></sub> owning the <em>i</em><sup>th</sup> segment of consecutive elements. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[out]</td><td class="paramname">items</td><td>Data to load </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">itr</td><td>Input iterator for loading from </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">cta_offset</td><td>Offset in <code>itr</code> at which to load the tile </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">guarded_items</td><td>Number of valid items in the tile </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">oob_default</td><td>Default value to assign out-of-bound items </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<a class="anchor" id="ga879dec7aaefb8a7d116ae250b1904da0"></a>
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;PtxLoadModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </div>
       <table class="memname">
         <tr>
           <td class="memname">__device__ __forceinline__ void cub::CtaLoadDirectStriped </td>
@@ -457,7 +610,6 @@ template&lt;int CTA_THREADS, PtxLoadModifier MODIFIER, typename T , int ITEMS_PE
 <p>Load striped tile directly using the specified cache modifier. </p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">CTA_THREADS</td><td>The CTA size in threads </td></tr>
     <tr><td class="paramname">MODIFIER</td><td>cub::PtxLoadModifier cache modifier. </td></tr>
     <tr><td class="paramname">T</td><td><b>[inferred]</b> The data type to load. </td></tr>
     <tr><td class="paramname">ITEMS_PER_THREAD</td><td><b>[inferred]</b> The number of consecutive items partitioned onto each thread. </td></tr>
@@ -478,11 +630,11 @@ template&lt;int CTA_THREADS, PtxLoadModifier MODIFIER, typename T , int ITEMS_PE
 
 </div>
 </div>
-<a class="anchor" id="ga879dec7aaefb8a7d116ae250b1904da0"></a>
+<a class="anchor" id="gae2eaa8a2de931566b7ee6493e26425a2"></a>
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int CTA_THREADS, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </div>
+template&lt;typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </div>
       <table class="memname">
         <tr>
           <td class="memname">__device__ __forceinline__ void cub::CtaLoadDirectStriped </td>
@@ -513,7 +665,6 @@ template&lt;int CTA_THREADS, typename T , int ITEMS_PER_THREAD, typename InputIt
 <p>Load striped tile directly. </p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">CTA_THREADS</td><td>The CTA size in threads </td></tr>
     <tr><td class="paramname">MODIFIER</td><td>cub::PtxLoadModifier cache modifier. </td></tr>
     <tr><td class="paramname">T</td><td><b>[inferred]</b> The data type to load. </td></tr>
     <tr><td class="paramname">ITEMS_PER_THREAD</td><td><b>[inferred]</b> The number of consecutive items partitioned onto each thread. </td></tr>
@@ -534,11 +685,11 @@ template&lt;int CTA_THREADS, typename T , int ITEMS_PER_THREAD, typename InputIt
 
 </div>
 </div>
-<a class="anchor" id="ga3dae50bf2bae003b6dad2aa4bcac77a4"></a>
+<a class="anchor" id="ga7118959cf5536bc6dc562d5508d7e591"></a>
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int CTA_THREADS, PtxLoadModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </div>
+template&lt;PtxLoadModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </div>
       <table class="memname">
         <tr>
           <td class="memname">__device__ __forceinline__ void cub::CtaLoadDirectStriped </td>
@@ -562,7 +713,7 @@ template&lt;int CTA_THREADS, PtxLoadModifier MODIFIER, typename T , int ITEMS_PE
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">const SizeT &amp;&#160;</td>
-          <td class="paramname"><em>guarded_elements</em>&#160;</td>
+          <td class="paramname"><em>guarded_items</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -590,18 +741,18 @@ template&lt;int CTA_THREADS, PtxLoadModifier MODIFIER, typename T , int ITEMS_PE
     <tr><td class="paramdir">[out]</td><td class="paramname">items</td><td>Data to load </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">itr</td><td>Input iterator for loading from </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">cta_offset</td><td>Offset in <code>itr</code> at which to load the tile </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">guarded_elements</td><td>Number of valid items in the tile </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">guarded_items</td><td>Number of valid items in the tile </td></tr>
   </table>
   </dd>
 </dl>
 
 </div>
 </div>
-<a class="anchor" id="ga8c2bfa877fb44a81c97edc2e020e839b"></a>
+<a class="anchor" id="ga93e3e2760919d3c02ec27b8633ad00c7"></a>
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int CTA_THREADS, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </div>
+template&lt;typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </div>
       <table class="memname">
         <tr>
           <td class="memname">__device__ __forceinline__ void cub::CtaLoadDirectStriped </td>
@@ -625,7 +776,7 @@ template&lt;int CTA_THREADS, typename T , int ITEMS_PER_THREAD, typename InputIt
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">const SizeT &amp;&#160;</td>
-          <td class="paramname"><em>guarded_elements</em>&#160;</td>
+          <td class="paramname"><em>guarded_items</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -638,7 +789,6 @@ template&lt;int CTA_THREADS, typename T , int ITEMS_PER_THREAD, typename InputIt
 <p>Load striped tile directly, guarded by range. </p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">CTA_THREADS</td><td>The CTA size in threads </td></tr>
     <tr><td class="paramname">T</td><td><b>[inferred]</b> The data type to load. </td></tr>
     <tr><td class="paramname">ITEMS_PER_THREAD</td><td><b>[inferred]</b> The number of consecutive items partitioned onto each thread. </td></tr>
     <tr><td class="paramname">InputIterator</td><td><b>[inferred]</b> The input iterator type (may be a simple pointer). </td></tr>
@@ -652,7 +802,144 @@ template&lt;int CTA_THREADS, typename T , int ITEMS_PER_THREAD, typename InputIt
     <tr><td class="paramdir">[out]</td><td class="paramname">items</td><td>Data to load </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">itr</td><td>Input iterator for loading from </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">cta_offset</td><td>Offset in <code>itr</code> at which to load the tile </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">guarded_elements</td><td>Number of valid items in the tile </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">guarded_items</td><td>Number of valid items in the tile </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<a class="anchor" id="gaf0ce5278cbd4935152c9e34ff12981d2"></a>
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;PtxLoadModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </div>
+      <table class="memname">
+        <tr>
+          <td class="memname">__device__ __forceinline__ void cub::CtaLoadDirectStriped </td>
+          <td>(</td>
+          <td class="paramtype">T(&amp;)&#160;</td>
+          <td class="paramname"><em>items</em>[ITEMS_PER_THREAD], </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">InputIterator&#160;</td>
+          <td class="paramname"><em>itr</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const SizeT &amp;&#160;</td>
+          <td class="paramname"><em>cta_offset</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const SizeT &amp;&#160;</td>
+          <td class="paramname"><em>guarded_items</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">T&#160;</td>
+          <td class="paramname"><em>oob_default</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Load striped directly tile using the specified cache modifier, guarded by range, with assignment for out-of-bound elements. </p>
+<dl class="tparams"><dt>Template Parameters</dt><dd>
+  <table class="tparams">
+    <tr><td class="paramname">MODIFIER</td><td>cub::PtxLoadModifier cache modifier. </td></tr>
+    <tr><td class="paramname">T</td><td><b>[inferred]</b> The data type to load. </td></tr>
+    <tr><td class="paramname">ITEMS_PER_THREAD</td><td><b>[inferred]</b> The number of consecutive items partitioned onto each thread. </td></tr>
+    <tr><td class="paramname">InputIterator</td><td><b>[inferred]</b> The input iterator type (may be a simple pointer). </td></tr>
+    <tr><td class="paramname">SizeT</td><td><b>[inferred]</b> Integer type for offsets</td></tr>
+  </table>
+  </dd>
+</dl>
+<p>The aggregate tile of items is assumed to be partitioned across threads in "striped" fashion, i.e., the <code>ITEMS_PER_THREAD</code> items owned by each thread have logical stride <code>CTA_THREADS</code> between them. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[out]</td><td class="paramname">items</td><td>Data to load </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">itr</td><td>Input iterator for loading from </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">cta_offset</td><td>Offset in <code>itr</code> at which to load the tile </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">guarded_items</td><td>Number of valid items in the tile </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">oob_default</td><td>Default value to assign out-of-bound items </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<a class="anchor" id="ga78e0b2d3629305ca0bf6e30a354b2899"></a>
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </div>
+      <table class="memname">
+        <tr>
+          <td class="memname">__device__ __forceinline__ void cub::CtaLoadDirectStriped </td>
+          <td>(</td>
+          <td class="paramtype">T(&amp;)&#160;</td>
+          <td class="paramname"><em>items</em>[ITEMS_PER_THREAD], </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">InputIterator&#160;</td>
+          <td class="paramname"><em>itr</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const SizeT &amp;&#160;</td>
+          <td class="paramname"><em>cta_offset</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const SizeT &amp;&#160;</td>
+          <td class="paramname"><em>guarded_items</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">T&#160;</td>
+          <td class="paramname"><em>oob_default</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Load striped tile directly, guarded by range, with assignment for out-of-bound elements. </p>
+<dl class="tparams"><dt>Template Parameters</dt><dd>
+  <table class="tparams">
+    <tr><td class="paramname">T</td><td><b>[inferred]</b> The data type to load. </td></tr>
+    <tr><td class="paramname">ITEMS_PER_THREAD</td><td><b>[inferred]</b> The number of consecutive items partitioned onto each thread. </td></tr>
+    <tr><td class="paramname">InputIterator</td><td><b>[inferred]</b> The input iterator type (may be a simple pointer). </td></tr>
+    <tr><td class="paramname">SizeT</td><td><b>[inferred]</b> Integer type for offsets</td></tr>
+  </table>
+  </dd>
+</dl>
+<p>The aggregate tile of items is assumed to be partitioned across threads in "striped" fashion, i.e., the <code>ITEMS_PER_THREAD</code> items owned by each thread have logical stride <code>CTA_THREADS</code> between them. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[out]</td><td class="paramname">items</td><td>Data to load </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">itr</td><td>Input iterator for loading from </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">cta_offset</td><td>Offset in <code>itr</code> at which to load the tile </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">guarded_items</td><td>Number of valid items in the tile </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">oob_default</td><td>Default value to assign out-of-bound items </td></tr>
   </table>
   </dd>
 </dl>
@@ -889,7 +1176,7 @@ template&lt;typename T , int ITEMS_PER_THREAD, typename InputIterator , typename
 
 </div>
 </div>
-<a class="anchor" id="gaff77c0e52457fcbd514ea4fea69df6be"></a>
+<a class="anchor" id="ga5efa42b537947ff9a45112c6b188ab0f"></a>
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
@@ -917,7 +1204,7 @@ template&lt;PtxStoreModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typena
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">const SizeT &amp;&#160;</td>
-          <td class="paramname"><em>guarded_elements</em>&#160;</td>
+          <td class="paramname"><em>guarded_items</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -944,14 +1231,14 @@ template&lt;PtxStoreModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typena
     <tr><td class="paramdir">[in]</td><td class="paramname">items</td><td>Data to store </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">itr</td><td>Input iterator for storing from </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">cta_offset</td><td>Offset in <code>itr</code> at which to store the tile </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">guarded_elements</td><td>Number of valid items in the tile </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">guarded_items</td><td>Number of valid items in the tile </td></tr>
   </table>
   </dd>
 </dl>
 
 </div>
 </div>
-<a class="anchor" id="ga2c3bd14d9879a8d552bdd6ce07978c07"></a>
+<a class="anchor" id="ga2e0d9e54665e769624508ecbd1c9851e"></a>
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
@@ -979,7 +1266,7 @@ template&lt;typename T , int ITEMS_PER_THREAD, typename InputIterator , typename
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">const SizeT &amp;&#160;</td>
-          <td class="paramname"><em>guarded_elements</em>&#160;</td>
+          <td class="paramname"><em>guarded_items</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -1005,18 +1292,18 @@ template&lt;typename T , int ITEMS_PER_THREAD, typename InputIterator , typename
     <tr><td class="paramdir">[in]</td><td class="paramname">items</td><td>Data to store </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">itr</td><td>Input iterator for storing from </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">cta_offset</td><td>Offset in <code>itr</code> at which to store the tile </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">guarded_elements</td><td>Number of valid items in the tile </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">guarded_items</td><td>Number of valid items in the tile </td></tr>
   </table>
   </dd>
 </dl>
 
 </div>
 </div>
-<a class="anchor" id="ga87048895ba5130b3e1df4bf339fbb934"></a>
+<a class="anchor" id="ga28803ed44893f5cbe2269be0942ca6f3"></a>
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int CTA_THREADS, PtxStoreModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </div>
+template&lt;PtxStoreModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </div>
       <table class="memname">
         <tr>
           <td class="memname">__device__ __forceinline__ void cub::CtaStoreDirectStriped </td>
@@ -1047,7 +1334,6 @@ template&lt;int CTA_THREADS, PtxStoreModifier MODIFIER, typename T , int ITEMS_P
 <p>Store striped tile directly using the specified cache modifier. </p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">CTA_THREADS</td><td>The CTA size in threads </td></tr>
     <tr><td class="paramname">MODIFIER</td><td>cub::PtxStoreModifier cache modifier. </td></tr>
     <tr><td class="paramname">T</td><td><b>[inferred]</b> The data type to store. </td></tr>
     <tr><td class="paramname">ITEMS_PER_THREAD</td><td><b>[inferred]</b> The number of consecutive items partitioned onto each thread. </td></tr>
@@ -1068,11 +1354,11 @@ template&lt;int CTA_THREADS, PtxStoreModifier MODIFIER, typename T , int ITEMS_P
 
 </div>
 </div>
-<a class="anchor" id="ga28803ed44893f5cbe2269be0942ca6f3"></a>
+<a class="anchor" id="ga3af2afbff61053bee87eca20724828cc"></a>
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int CTA_THREADS, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </div>
+template&lt;typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </div>
       <table class="memname">
         <tr>
           <td class="memname">__device__ __forceinline__ void cub::CtaStoreDirectStriped </td>
@@ -1103,7 +1389,6 @@ template&lt;int CTA_THREADS, typename T , int ITEMS_PER_THREAD, typename InputIt
 <p>Store striped tile directly. </p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">CTA_THREADS</td><td>The CTA size in threads </td></tr>
     <tr><td class="paramname">MODIFIER</td><td>cub::PtxStoreModifier cache modifier. </td></tr>
     <tr><td class="paramname">T</td><td><b>[inferred]</b> The data type to store. </td></tr>
     <tr><td class="paramname">ITEMS_PER_THREAD</td><td><b>[inferred]</b> The number of consecutive items partitioned onto each thread. </td></tr>
@@ -1124,11 +1409,11 @@ template&lt;int CTA_THREADS, typename T , int ITEMS_PER_THREAD, typename InputIt
 
 </div>
 </div>
-<a class="anchor" id="ga4950b33a4889a885bc9500b8b95def25"></a>
+<a class="anchor" id="ga688008cfe32ec59727aa35c8c7d5b573"></a>
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int CTA_THREADS, PtxStoreModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </div>
+template&lt;PtxStoreModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </div>
       <table class="memname">
         <tr>
           <td class="memname">__device__ __forceinline__ void cub::CtaStoreDirectStriped </td>
@@ -1152,7 +1437,7 @@ template&lt;int CTA_THREADS, PtxStoreModifier MODIFIER, typename T , int ITEMS_P
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">const SizeT &amp;&#160;</td>
-          <td class="paramname"><em>guarded_elements</em>&#160;</td>
+          <td class="paramname"><em>guarded_items</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -1164,7 +1449,6 @@ template&lt;int CTA_THREADS, PtxStoreModifier MODIFIER, typename T , int ITEMS_P
 <p>Store striped directly tile using the specified cache modifier, guarded by range</p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">CTA_THREADS</td><td>The CTA size in threads </td></tr>
     <tr><td class="paramname">MODIFIER</td><td>cub::PtxStoreModifier cache modifier. </td></tr>
     <tr><td class="paramname">T</td><td><b>[inferred]</b> The data type to store. </td></tr>
     <tr><td class="paramname">ITEMS_PER_THREAD</td><td><b>[inferred]</b> The number of consecutive items partitioned onto each thread. </td></tr>
@@ -1179,18 +1463,18 @@ template&lt;int CTA_THREADS, PtxStoreModifier MODIFIER, typename T , int ITEMS_P
     <tr><td class="paramdir">[in]</td><td class="paramname">items</td><td>Data to store </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">itr</td><td>Input iterator for storing from </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">cta_offset</td><td>Offset in <code>itr</code> at which to store the tile </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">guarded_elements</td><td>Number of valid items in the tile </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">guarded_items</td><td>Number of valid items in the tile </td></tr>
   </table>
   </dd>
 </dl>
 
 </div>
 </div>
-<a class="anchor" id="ga3a65a1256d95ff1d525d608f640aadff"></a>
+<a class="anchor" id="gad2527f2079e7a1f9ad8ba073dcfc3d34"></a>
 <div class="memitem">
 <div class="memproto">
 <div class="memtemplate">
-template&lt;int CTA_THREADS, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </div>
+template&lt;typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </div>
       <table class="memname">
         <tr>
           <td class="memname">__device__ __forceinline__ void cub::CtaStoreDirectStriped </td>
@@ -1214,7 +1498,7 @@ template&lt;int CTA_THREADS, typename T , int ITEMS_PER_THREAD, typename InputIt
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">const SizeT &amp;&#160;</td>
-          <td class="paramname"><em>guarded_elements</em>&#160;</td>
+          <td class="paramname"><em>guarded_items</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -1227,7 +1511,6 @@ template&lt;int CTA_THREADS, typename T , int ITEMS_PER_THREAD, typename InputIt
 <p>Store striped tile directly, guarded by range. </p>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
-    <tr><td class="paramname">CTA_THREADS</td><td>The CTA size in threads </td></tr>
     <tr><td class="paramname">T</td><td><b>[inferred]</b> The data type to store. </td></tr>
     <tr><td class="paramname">ITEMS_PER_THREAD</td><td><b>[inferred]</b> The number of consecutive items partitioned onto each thread. </td></tr>
     <tr><td class="paramname">InputIterator</td><td><b>[inferred]</b> The input iterator type (may be a simple pointer). </td></tr>
@@ -1241,7 +1524,7 @@ template&lt;int CTA_THREADS, typename T , int ITEMS_PER_THREAD, typename InputIt
     <tr><td class="paramdir">[in]</td><td class="paramname">items</td><td>Data to store </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">itr</td><td>Input iterator for storing from </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">cta_offset</td><td>Offset in <code>itr</code> at which to store the tile </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">guarded_elements</td><td>Number of valid items in the tile </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">guarded_items</td><td>Number of valid items in the tile </td></tr>
   </table>
   </dd>
 </dl>
@@ -1372,7 +1655,7 @@ template&lt;typename T , int ITEMS_PER_THREAD, typename SizeT &gt; </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Nov 29 2012 13:32:24 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
+Generated on Wed Jan 30 2013 08:55:38 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
 <img class="footer" src="doxygen.png" alt="doxygen"/>
 </a> 1.8.2
 </small></address>

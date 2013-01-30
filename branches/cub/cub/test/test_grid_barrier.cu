@@ -41,7 +41,7 @@ using namespace cub;
  * Kernel that iterates through the specified number of software global barriers
  */
 __global__ void Kernel(
-	GridTestBarrier global_barrier,
+	GridBarrier global_barrier,
 	int iterations)
 {
 	for (int i = 0; i < iterations; i++)
@@ -113,7 +113,7 @@ int main(int argc, char** argv)
     fflush(stdout);
 
     // Init global barrier
-    GridTestBarrierLifetime global_barrier;
+    GridBarrierLifetime global_barrier;
 	global_barrier.Setup(grid_size);
 
 	// Time kernel

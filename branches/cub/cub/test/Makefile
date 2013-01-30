@@ -129,14 +129,14 @@ bin/test_allocator_$(SUFFIX) : test_allocator.cu $(DEPS)
 	
 	
 #-------------------------------------------------------------------------------
-# make test_cta_global_barrier 
+# make test_grid_barrier 
 #-------------------------------------------------------------------------------
 
-test_cta_global_barrier: bin/test_cta_global_barrier_$(SUFFIX)
+test_grid_barrier: bin/test_grid_barrier_$(SUFFIX)
 
-bin/test_cta_global_barrier_$(SUFFIX) : test_cta_global_barrier.cu $(DEPS)
+bin/test_grid_barrier_$(SUFFIX) : test_grid_barrier.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_cta_global_barrier_$(SUFFIX) test_cta_global_barrier.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_grid_barrier_$(SUFFIX) test_grid_barrier.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
 	
 
 #-------------------------------------------------------------------------------
@@ -206,12 +206,12 @@ bin/test_coo_spmv_$(SUFFIX) : test_coo_spmv.cu $(DEPS)
 	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_coo_spmv_$(SUFFIX) test_coo_spmv.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3
 
 #-------------------------------------------------------------------------------
-# make test_init
+# make test_cta_serialize
 #-------------------------------------------------------------------------------
 
-test_init: bin/test_init_$(SUFFIX)
+test_cta_serialize: bin/test_cta_serialize_$(SUFFIX)
 
-bin/test_init_$(SUFFIX) : test_init.cu $(DEPS)
+bin/test_cta_serialize_$(SUFFIX) : test_cta_serialize.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_init_$(SUFFIX) test_init.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_cta_serialize_$(SUFFIX) test_cta_serialize.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3
 
