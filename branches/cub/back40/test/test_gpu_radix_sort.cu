@@ -74,14 +74,13 @@ int main(int argc, char** argv)
 //    typedef unsigned long long         ValueType;
 //    typedef unsigned int            ValueType;
 
-    const int         START_BIT            = 0;
-    const int         KEY_BITS             = sizeof(KeyType) * 8;
-    const bool         KEYS_ONLY            = cub::Equals<ValueType, cub::NullType>::VALUE;
+    const int       START_BIT            = 0;
+    const int       KEY_BITS             = sizeof(KeyType) * 8;
+    const bool      KEYS_ONLY            = cub::Equals<ValueType, cub::NullType>::VALUE;
     int             num_elements         = 1024 * 1024 * 8;
-    unsigned int     max_ctas             = 0;
-    int             iterations             = 0;
-    int                entropy_reduction     = 0;
-    int             effective_bits         = KEY_BITS;
+    unsigned int    max_ctas             = 0;
+    int             iterations           = 0;
+    int             entropy_reduction    = 0;
 
     // Initialize command line
     CommandLineArgs args(argc, argv);
@@ -106,12 +105,11 @@ int main(int argc, char** argv)
     args.GetCmdLineArgument("i", iterations);
     args.GetCmdLineArgument("max-ctas", max_ctas);
     args.GetCmdLineArgument("entropy-reduction", entropy_reduction);
-    args.GetCmdLineArgument("bits", effective_bits);
 
     // Print header
     printf("Initializing problem instance ");
     if (zeros) printf("(zeros)\n");
-    else if (regular) printf("(%d-bit mod-%llu)\n", KEY_BITS, 1ull << effective_bits);
+    else if (regular) printf("(%d-bit mod-%llu)\n", KEY_BITS, 1ull << KEY_BITS);
     else printf("(%d-bit random)\n", KEY_BITS);
     fflush(stdout);
 
@@ -131,15 +129,12 @@ int main(int argc, char** argv)
     for (int i = 0; i < num_elements; ++i)
     {
         if (regular) {
-            h_keys[i] = i & ((1ull << effective_bits) - 1);
+            h_keys[i] = i & ((1ull << KEY_BITS) - 1);
         } else if (zeros) {
             h_keys[i] = 0;
         } else {
-            RandomBits(h_keys[i], entropy_reduction, KEY_BITS);
+            RandomBits(h_keys[i], entropy_reduction, START_BIT, START_BIT + KEY_BITS);
         }
-
-        h_keys[i] *= (1 << START_BIT);
-
         h_reference_keys[i] = h_keys[i];
 
         if (!KEYS_ONLY) {
@@ -169,7 +164,7 @@ int main(int argc, char** argv)
 
     // Resize max cached bytes to 512MB
     cub::SetMaxCachedBytes(512 * 1024 * 1024);
-//  GetDeviceAllocator->debug = true;
+//  cub::allocator->debug = true;
 
     //
     // Perform one sorting pass for correctness/warmup

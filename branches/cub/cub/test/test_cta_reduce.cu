@@ -71,7 +71,7 @@ __global__ void FullTileReduceKernel(
 
 	// Load first tile of data
 	int cta_offset = 0;
-	CtaLoadDirect(data, d_in, cta_offset);
+	CtaLoadDirect(d_in + cta_offset, data);
 	cta_offset += TILE_SIZE;
 
 	// Cooperative reduce first tile
@@ -84,7 +84,7 @@ __global__ void FullTileReduceKernel(
 		__syncthreads();
 
 		// Load tile of data
-		CtaLoadDirect(data, d_in, cta_offset);
+		CtaLoadDirect(d_in + cta_offset, data);
 		cta_offset += TILE_SIZE;
 
 		// Cooperatively reduce the tile's aggregate

@@ -97,12 +97,12 @@ __global__ void Kernel(
         T data[ITEMS_PER_THREAD];
 
         // Load data
-        CtaLoad::Load(smem_storage.load, data, d_in, cta_offset);
+        CtaLoad::Load(smem_storage.load, d_in + cta_offset, data);
 
         __syncthreads();
 
         // Store data
-        CtaStore::Store(smem_storage.store, data, d_out_unguarded, cta_offset);
+        CtaStore::Store(smem_storage.store, d_out_unguarded + cta_offset, data);
     }
 
     __syncthreads();
@@ -113,12 +113,12 @@ __global__ void Kernel(
         T data[ITEMS_PER_THREAD];
 
         // Load data
-        CtaLoad::Load(smem_storage.load, data, d_in, cta_offset, guarded_elements);
+        CtaLoad::Load(smem_storage.load, d_in + cta_offset, guarded_elements, data);
 
         __syncthreads();
 
         // Store data
-        CtaStore::Store(smem_storage.store, data, d_out_guarded_range, cta_offset, guarded_elements);
+        CtaStore::Store(smem_storage.store, d_out_guarded_range + cta_offset, guarded_elements, data);
     }
 }
 

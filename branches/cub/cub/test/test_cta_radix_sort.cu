@@ -85,32 +85,25 @@ __global__ void Kernel(
 
     if (KEYS_ONLY)
     {
-        //
         // Test keys-only sorting (in striped arrangement)
-        //
-
-        CtaLoadDirectStriped<CTA_THREADS>(keys, d_keys, 0);
+        CtaLoadDirectStriped(d_keys, keys, CTA_THREADS);
 
         CtaRadixSort::SortStriped(smem_storage, keys, begin_bit, end_bit);
 
-        CtaStoreDirectStriped<CTA_THREADS>(keys, d_keys, 0);
+        CtaStoreDirectStriped(d_keys, keys, CTA_THREADS);
     }
     else
     {
-        //
         // Test keys-value sorting (in striped arrangement)
-        //
-
-        // Values per thread
         ValueType values[ITEMS_PER_THREAD];
 
-        CtaLoadDirectStriped<CTA_THREADS>(keys, d_keys, 0);
-        CtaLoadDirectStriped<CTA_THREADS>(values, d_values, 0);
+        CtaLoadDirectStriped(d_keys, keys, CTA_THREADS);
+        CtaLoadDirectStriped(d_values, values, CTA_THREADS);
 
         CtaRadixSort::SortStriped(smem_storage, keys, values, begin_bit, end_bit);
 
-        CtaStoreDirectStriped<CTA_THREADS>(keys, d_keys, 0);
-        CtaStoreDirectStriped<CTA_THREADS>(values, d_values, 0);
+        CtaStoreDirectStriped(d_keys, keys, CTA_THREADS);
+        CtaStoreDirectStriped(d_values, values, CTA_THREADS);
     }
 }
 
@@ -118,10 +111,6 @@ __global__ void Kernel(
 //---------------------------------------------------------------------
 // Host testing subroutines
 //---------------------------------------------------------------------
-
-// Caching allocator (caches up to 6MB in device allocations per GPU)
-CachedAllocator g_allocator;
-
 
 /**
  * Drive CtaRadixSort kernel
@@ -152,8 +141,8 @@ void TestDriver(
     // Allocate device arrays
     KeyType     *d_keys     = NULL;
     ValueType   *d_values   = NULL;
-    CubDebugExit(g_allocator.Allocate((void**)&d_keys, sizeof(KeyType) * TILE_SIZE));
-    CubDebugExit(g_allocator.Allocate((void**)&d_values, sizeof(ValueType) * TILE_SIZE));
+    CubDebugExit(DeviceAllocate((void**)&d_keys, sizeof(KeyType) * TILE_SIZE));
+    CubDebugExit(DeviceAllocate((void**)&d_values, sizeof(ValueType) * TILE_SIZE));
 
     // Initialize problem on host and device
     for (int i = 0; i < TILE_SIZE; ++i)
@@ -246,8 +235,8 @@ void TestDriver(
     if (h_keys)             free(h_keys);
     if (h_reference_keys)   free(h_reference_keys);
     if (h_values)           free(h_values);
-    if (d_keys)             CubDebugExit(g_allocator.DeviceFree(d_keys));
-    if (d_values)           CubDebugExit(g_allocator.DeviceFree(d_values));
+    if (d_keys)             CubDebugExit(DeviceFree(d_keys));
+    if (d_values)           CubDebugExit(DeviceFree(d_values));
 }
 
 

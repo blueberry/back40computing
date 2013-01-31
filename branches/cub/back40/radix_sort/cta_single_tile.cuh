@@ -40,25 +40,25 @@ namespace radix_sort {
  * Single tile CTA tuning policy
  */
 template <
-	int 							_RADIX_BITS,			// The number of radix bits, i.e., log2(bins)
-	int 							_CTA_THREADS,			// The number of threads per CTA
-	int 							_THREAD_ITEMS,			// The number of consecutive items to load per thread per tile
-	cub::PtxLoadModifier 				_LOAD_MODIFIER,			// Load cache-modifier
-	cub::PtxStoreModifier				_STORE_MODIFIER,		// Store cache-modifier
-	cudaSharedMemConfig				_SMEM_CONFIG>			// Shared memory bank size
+    int                     _RADIX_BITS,        // The number of radix bits, i.e., log2(bins)
+    int                     _CTA_THREADS,       // The number of threads per CTA
+    int                     _THREAD_ITEMS,      // The number of consecutive items to load per thread per tile
+    cub::PtxLoadModifier    _LOAD_MODIFIER,     // Load cache-modifier
+    cub::PtxStoreModifier   _STORE_MODIFIER,    // Store cache-modifier
+    cudaSharedMemConfig     _SMEM_CONFIG>       // Shared memory bank size
 struct CtaSingleTilePolicy
 {
-	enum
-	{
-		RADIX_BITS					= _RADIX_BITS,
-		CTA_THREADS 				= _CTA_THREADS,
-		THREAD_ITEMS 				= _THREAD_ITEMS,
-		TILE_ITEMS					= CTA_THREADS * THREAD_ITEMS,
-	};
+    enum
+    {
+        RADIX_BITS      = _RADIX_BITS,
+        CTA_THREADS     = _CTA_THREADS,
+        THREAD_ITEMS    = _THREAD_ITEMS,
+        TILE_ITEMS      = CTA_THREADS * THREAD_ITEMS,
+    };
 
-	static const cub::PtxLoadModifier 		LOAD_MODIFIER 		= _LOAD_MODIFIER;
-	static const cub::PtxStoreModifier 	STORE_MODIFIER 		= _STORE_MODIFIER;
-	static const cudaSharedMemConfig	SMEM_CONFIG			= _SMEM_CONFIG;
+    static const cub::PtxLoadModifier   LOAD_MODIFIER       = _LOAD_MODIFIER;
+    static const cub::PtxStoreModifier  STORE_MODIFIER      = _STORE_MODIFIER;
+    static const cudaSharedMemConfig    SMEM_CONFIG         = _SMEM_CONFIG;
 };
 
 
@@ -71,184 +71,150 @@ struct CtaSingleTilePolicy
  * CTA-wide abstraction for sorting a single tile of input
  */
 template <
-	typename CtaSingleTilePolicy,
-	typename KeyType,
-	typename ValueType>
+    typename CtaSingleTilePolicy,
+    typename KeyType,
+    typename ValueType>
 class CtaSingleTile
 {
 private:
 
-	//---------------------------------------------------------------------
-	// Type definitions and constants
-	//---------------------------------------------------------------------
+    //---------------------------------------------------------------------
+    // Type definitions and constants
+    //---------------------------------------------------------------------
 
-	// Appropriate unsigned-bits representation of KeyType
-	typedef typename KeyTraits<KeyType>::UnsignedBits UnsignedBits;
+    // Appropriate unsigned-bits representation of KeyType
+    typedef typename KeyTraits<KeyType>::UnsignedBits UnsignedBits;
 
-	static const UnsignedBits 	MIN_KEY 	= KeyTraits<KeyType>::MIN_KEY;
-	static const UnsignedBits 	MAX_KEY 	= KeyTraits<KeyType>::MAX_KEY;
+    static const UnsignedBits     MIN_KEY     = KeyTraits<KeyType>::MIN_KEY;
+    static const UnsignedBits     MAX_KEY     = KeyTraits<KeyType>::MAX_KEY;
 
-	enum
-	{
-		CTA_THREADS					= CtaSingleTilePolicy::CTA_THREADS,
-		RADIX_BITS					= CtaSingleTilePolicy::RADIX_BITS,
-		KEYS_PER_THREAD				= CtaSingleTilePolicy::THREAD_ITEMS,
-		TILE_ITEMS				= CtaSingleTilePolicy::TILE_ITEMS,
-	};
+    enum
+    {
+        CTA_THREADS         = CtaSingleTilePolicy::CTA_THREADS,
+        RADIX_BITS          = CtaSingleTilePolicy::RADIX_BITS,
+        KEYS_PER_THREAD     = CtaSingleTilePolicy::THREAD_ITEMS,
+        TILE_ITEMS          = CtaSingleTilePolicy::TILE_ITEMS,
+    };
 
-
-	// CtaRadixSort utility type
-	typedef cub::CtaRadixSort<
-		UnsignedBits,
-		CTA_THREADS,
-		KEYS_PER_THREAD,
-		RADIX_BITS,
-		ValueType,
-		CtaSingleTilePolicy::SMEM_CONFIG> CtaRadixSortT;
 
 public:
 
-	/**
-	 * Shared memory storage layout
-	 */
-	struct SmemStorage
-	{
-		union
-		{
-			typename CtaRadixSortT::SmemStorage 	sorting_storage;
-			UnsignedBits							key_exchange[TILE_ITEMS];
-		};
-	};
+    /**
+     * Shared memory storage layout
+     */
+    typedef typename CtaRadixSortT::SmemStorage SmemStorage;
 
 
-private:
+    //---------------------------------------------------------------------
+    // Interface
+    //---------------------------------------------------------------------
 
-	//---------------------------------------------------------------------
-	// Utility methods
-	//---------------------------------------------------------------------
+    /**
+     * Sort a tile.  (Specialized for keys-only sorting.)
+     */
+    static __device__ __forceinline__ void Sort(
+        SmemStorage         &smem_storage,
+        KeyType             *d_keys_in,
+        KeyType             *d_keys_out,
+        cub::NullType       *d_values_in,
+        cub::NullType       *d_values_out,
+        unsigned int        begin_bit,
+        const unsigned int  &end_bit,
+        const int           &num_elements)
+    {
+        UnsignedBits* d_bits_in = reinterpret_cast<UnsignedBits*>(d_keys_in);
+        UnsignedBits* d_bits_out = reinterpret_cast<UnsignedBits*>(d_keys_out);
 
-	/**
-	 *
-	 */
-	template <typename T>
-	static __device__ __forceinline__ void LoadTile(
-		T				*exchange,
-		T 				*items,
-		T 				*d_in,
-		const int 		&num_elements)
-	{
-		#pragma unroll
-		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
-		{
-			int thread_offset = threadIdx.x + (KEY * CTA_THREADS);
-			if (thread_offset < num_elements)
-			{
-				items[KEY] = d_in[thread_offset];
-			}
-		}
+        UnsignedBits keys[KEYS_PER_THREAD];
 
-		__syncthreads();
+        // Load striped
+        cub::CtaLoadDirectStriped(d_bits_in, num_elements, MAX_KEY, keys, CTA_THREADS);
 
-		#pragma unroll
-		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
-		{
-			exchange[threadIdx.x + (KEY * CTA_THREADS)] = items[KEY];
-		}
+        // Twiddle key bits if necessary
+        #pragma unroll
+        for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
+        {
+            keys[KEY] = KeyTraits<KeyType>::TwiddleIn(keys[KEY]);
+        }
 
-		__syncthreads();
+        // Sort
+        CtaRadixSortT::SortStriped(smem_storage, keys, begin_bit, end_bit);
 
-		#pragma unroll
-		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
-		{
-			items[KEY] = exchange[(threadIdx.x * KEYS_PER_THREAD) + KEY];
-		}
-	}
+        // TODO: Twiddle key bits if necessary
+        #pragma unroll
+        for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
+        {
+            keys[KEY] = KeyTraits<KeyType>::TwiddleOut(keys[KEY]);
+        }
+
+        // Store keys
+        cub::CtaStoreDirectStriped(d_keys_out, num_elements, keys, CTA_THREADS);
+        StoreTile(
+            keys,
+            reinterpret_cast<UnsignedBits*>(d_bits_in),
+            num_elements);
+    }
 
 
-	/**
-	 *
-	 */
-	template <typename T>
-	static __device__ __forceinline__ void StoreTile(
-		T 				*items,
-		T 				*d_out,
-		const int 		&num_elements)
-	{
-		#pragma unroll
-		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
-		{
-			int thread_offset = (KEY * CTA_THREADS) + threadIdx.x;
-			if (thread_offset < num_elements)
-			{
-				d_out[thread_offset] = items[KEY];
-			}
-		}
-	}
 
-public:
+    /**
+     * Sort a tile.  (Specialized for key-value sorting.)
+     */
+    static __device__ __forceinline__ void Sort(
+        SmemStorage         &smem_storage,
+        KeyType             *d_keys_in,
+        KeyType             *d_keys_out,
+        cub::NullType         *d_values_in,
+        cub::NullType         *d_values_out,
+        unsigned int         current_bit,
+        const unsigned int     &bits_remaining,
+        const int             &num_elements)
+    {
+        UnsignedBits keys[KEYS_PER_THREAD];
 
-	//---------------------------------------------------------------------
-	// Interface
-	//---------------------------------------------------------------------
+        // Initialize keys to default key value
+        #pragma unroll
+        for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
+        {
+            keys[KEY] = MAX_KEY;
+        }
 
-	/**
-	 * ProcessTile.  (Specialized for keys-only sorting.)
-	 */
-	static __device__ __forceinline__ void Sort(
-		SmemStorage 		&smem_storage,
-		KeyType 			*d_keys_in,
-		KeyType 			*d_keys_out,
-		cub::NullType 		*d_values_in,
-		cub::NullType 		*d_values_out,
-		unsigned int 		current_bit,
-		const unsigned int 	&bits_remaining,
-		const int 			&num_elements)
-	{
-		UnsignedBits keys[KEYS_PER_THREAD];
+        // Load keys
+        LoadTile(
+            smem_storage.key_exchange,
+            keys,
+            reinterpret_cast<UnsignedBits*>(d_keys_in),
+            num_elements);
 
-		// Initialize keys to default key value
-		#pragma unroll
-		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
-		{
-			keys[KEY] = MAX_KEY;
-		}
+        __syncthreads();
 
-		// Load keys
-		LoadTile(
-			smem_storage.key_exchange,
-			keys,
-			reinterpret_cast<UnsignedBits*>(d_keys_in),
-			num_elements);
+        // Twiddle key bits if necessary
+        #pragma unroll
+        for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
+        {
+            keys[KEY] = KeyTraits<KeyType>::TwiddleIn(keys[KEY]);
+        }
 
-		__syncthreads();
+        // Sort
+        CtaRadixSortT::SortThreadToCtaStride(
+            smem_storage.sorting_storage,
+            keys,
+            current_bit,
+            bits_remaining);
 
-		// Twiddle key bits if necessary
-		#pragma unroll
-		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
-		{
-			keys[KEY] = KeyTraits<KeyType>::TwiddleIn(keys[KEY]);
-		}
+        // Twiddle key bits if necessary
+        #pragma unroll
+        for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
+        {
+            keys[KEY] = KeyTraits<KeyType>::TwiddleOut(keys[KEY]);
+        }
 
-		// Sort
-		CtaRadixSortT::SortThreadToCtaStride(
-			smem_storage.sorting_storage,
-			keys,
-			current_bit,
-			bits_remaining);
-
-		// Twiddle key bits if necessary
-		#pragma unroll
-		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
-		{
-			keys[KEY] = KeyTraits<KeyType>::TwiddleOut(keys[KEY]);
-		}
-
-		// Store keys
-		StoreTile(
-			keys,
-			reinterpret_cast<UnsignedBits*>(d_keys_out),
-			num_elements);
-	}
+        // Store keys
+        StoreTile(
+            keys,
+            reinterpret_cast<UnsignedBits*>(d_keys_out),
+            num_elements);
+    }
 
 };
 

@@ -478,16 +478,16 @@ struct SpmvCta
             VertexId last_row = d_rows[num_edges - 1];
             VertexId last_column = d_columns[num_edges - 1];
 
-            CtaLoadDirectStriped(rows, d_rows, cta_offset, guarded_items, last_row);
-            CtaLoadDirectStriped(columns, d_columns, cta_offset, guarded_items, last_column);
-            CtaLoadDirectStriped(values, d_values, cta_offset, guarded_items, Value(0.0));
+            CtaLoadDirectStriped(d_rows + cta_offset, guarded_items, last_row, rows, CTA_THREADS);
+            CtaLoadDirectStriped(d_columns + cta_offset, guarded_items, last_column, columns, CTA_THREADS);
+            CtaLoadDirectStriped(d_values + cta_offset, guarded_items, Value(0.0), values, CTA_THREADS);
         }
         else
         {
             // Unguarded loads
-            CtaLoadDirectStriped(rows, d_rows, cta_offset);
-            CtaLoadDirectStriped(columns, d_columns, cta_offset);
-            CtaLoadDirectStriped(values, d_values, cta_offset);
+            CtaLoadDirectStriped(d_rows + cta_offset, rows, CTA_THREADS);
+            CtaLoadDirectStriped(d_columns + cta_offset, columns, CTA_THREADS);
+            CtaLoadDirectStriped(d_values + cta_offset, values, CTA_THREADS);
         }
 
         // Fence to prevent hoisting any dependent code below into the loads above
@@ -523,7 +523,7 @@ struct SpmvCta
         ScanOp          scan_op;                                                    // Reduce-by-row scan operator
         PartialSum      local_aggregate;                                            // CTA-wide aggregate in thread0 (unused)
         PartialSum      identity = {0.0, first_row};                                // Zero-valued identity (with row-id of first item)
-        CtaPrefixOp     prefix_op(d_scan_progress, cta_offset, identity, scan_op);  // Callback functor for waiting on the previous CTA to compute its partial sum
+        CtaPrefixOp     prefix_op(d_scan_progress + cta_offset, identity, scan_op);  // Callback functor for waiting on the previous CTA to compute its partial sum
 
         CtaScan::ExclusiveScan(
             s_storage.scan,

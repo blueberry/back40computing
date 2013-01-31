@@ -70,9 +70,7 @@ struct TunedPolicy<200, KeyType, ValueType, SizeT>
     typedef DispatchPolicy <
         8,                                          // UPSWEEP_MIN_CTA_OCCUPANCY
         4,                                          // DOWNSWEEP_MIN_CTA_OCCUPANCY
-        4,                                          // HYBRID_MIN_CTA_OCCUPANCY
-        DYNAMIC_SMEM_NONE,                          // UNIFORM_SMEM_ALLOCATION
-        true>                                       // UNIFORM_GRID_SIZE
+        4>                                          // HYBRID_MIN_CTA_OCCUPANCY
             DispatchPolicyT;
 
     // Upsweep pass CTA policy

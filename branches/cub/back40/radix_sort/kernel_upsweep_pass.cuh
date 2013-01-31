@@ -37,58 +37,51 @@ namespace radix_sort {
  * Kernel entry point
  */
 template <
-	typename 	CtaUpsweepPassPolicy,
-	int 		MIN_CTA_OCCUPANCY,
-	typename 	KeyType,
-	typename 	SizeT>
+    typename    CtaUpsweepPassPolicy,
+    int         MIN_CTA_OCCUPANCY,
+    typename    KeyType,
+    typename    SizeT>
 __launch_bounds__ (
-	CtaUpsweepPassPolicy::CTA_THREADS,
-	MIN_CTA_OCCUPANCY)
+    CtaUpsweepPassPolicy::CTA_THREADS,
+    MIN_CTA_OCCUPANCY)
 __global__
 void UpsweepKernel(
-	KeyType 							*d_keys_in,
-	SizeT 								*d_spine,
-	cub::CtaWorkDistribution<SizeT> 	cta_work_distribution,
-	unsigned int 						current_bit)
+    KeyType                     *d_keys_in,
+    SizeT                       *d_spine,
+    cub::CtaEvenShare<SizeT>    cta_even_share,
+    unsigned int                current_bit)
 {
-	enum
-	{
-		TILE_ITEMS 		= CtaUpsweepPassPolicy::TILE_ITEMS,
-		RADIX_DIGITS 	= 1 << CtaUpsweepPassPolicy::RADIX_BITS,
-	};
+    // Constants
+    enum
+    {
+        TILE_ITEMS      = CtaUpsweepPassPolicy::TILE_ITEMS,
+        RADIX_DIGITS    = 1 << CtaUpsweepPassPolicy::RADIX_BITS,
+    };
 
-	// CTA abstraction types
-	typedef CtaUpsweepPass<CtaUpsweepPassPolicy, KeyType, SizeT> CtaUpsweepPassT;
+    // CTA abstraction types
+    typedef CtaUpsweepPass<CtaUpsweepPassPolicy, KeyType, SizeT> CtaUpsweepPassT;
 
-	// Shared data structures
-	__shared__ typename CtaUpsweepPassT::SmemStorage 	smem_storage;
-	__shared__ cub::CtaProgress<SizeT, TILE_ITEMS>		cta_progress;
+    // Shared data structures
+    __shared__ typename CtaUpsweepPassT::SmemStorage smem_storage;
 
-	// Determine our threadblock's work range
-	if (threadIdx.x == 0)
-	{
-		cta_progress.Init(cta_work_distribution);
-	}
+    // Determine our threadblock's work range
+    cta_even_share.Init();
 
-	// Sync to acquire work range
-	__syncthreads();
+    // Compute bin-count for each radix digit (valid in the first RADIX_DIGITS threads)
+    SizeT bin_count;
+    CtaUpsweepPassT::UpsweepPass(
+        smem_storage,
+        d_keys_in + cta_even_share.cta_offset,
+        current_bit,
+        cta_even_share.cta_items,
+        bin_count);
 
-	// Compute bin-count for each radix digit (valid in the first RADIX_DIGITS threads)
-	SizeT bin_count;
-	CtaUpsweepPassT::UpsweepPass(
-		smem_storage,
-		d_keys_in + cta_progress.cta_offset,
-		current_bit,
-		cta_progress.num_elements,
-		bin_count);
-
-	// Write out the bin_count reductions
-	if (threadIdx.x < RADIX_DIGITS)
-	{
-		int spine_bin_offset = (gridDim.x * threadIdx.x) + blockIdx.x;
-
-		d_spine[spine_bin_offset] = bin_count;
-	}
+    // Write out the bin_count reductions
+    if (threadIdx.x < RADIX_DIGITS)
+    {
+        int spine_bin_offset = (gridDim.x * threadIdx.x) + blockIdx.x;
+        d_spine[spine_bin_offset] = bin_count;
+    }
 }
 
 
@@ -96,55 +89,55 @@ void UpsweepKernel(
  * Upsweep kernel properties
  */
 template <
-	typename KeyType,
-	typename SizeT>
+    typename KeyType,
+    typename SizeT>
 struct UpsweepKernelProps : cub::KernelProps
 {
-	// Kernel function type
-	typedef void (*KernelFunc)(
-		KeyType*,
-		SizeT*,
-		cub::CtaWorkDistribution<SizeT>,
-		unsigned int);
+    // Kernel function type
+    typedef void (*KernelFunc)(
+        KeyType*,
+        SizeT*,
+        cub::CtaEvenShare<SizeT>,
+        unsigned int);
 
-	// Fields
-	KernelFunc 					kernel_func;
-	int 						tile_items;
-	cudaSharedMemConfig 		sm_bank_config;
-	int							radix_bits;
+    // Fields
+    KernelFunc              kernel_func;
+    int                     tile_items;
+    cudaSharedMemConfig     sm_bank_config;
+    int                     radix_bits;
 
-	/**
-	 * Initializer
-	 */
-	template <
-		typename CtaUpsweepPassPolicy,
-		typename OpaqueCtaUpsweepPassPolicy,
-		int MIN_CTA_OCCUPANCY>
-	cudaError_t Init(const cub::CudaProps &cuda_props)	// CUDA properties for a specific device
-	{
-		// Initialize fields
-		kernel_func 			= UpsweepKernel<OpaqueCtaUpsweepPassPolicy, MIN_CTA_OCCUPANCY>;
-		tile_items 			= CtaUpsweepPassPolicy::TILE_ITEMS;
-		sm_bank_config 			= CtaUpsweepPassPolicy::SMEM_CONFIG;
-		radix_bits				= CtaUpsweepPassPolicy::RADIX_BITS;
+    /**
+     * Initializer
+     */
+    template <
+        typename CtaUpsweepPassPolicy,
+        typename OpaqueCtaUpsweepPassPolicy,
+        int MIN_CTA_OCCUPANCY>
+    cudaError_t Init(const cub::CudaProps &cuda_props)    // CUDA properties for a specific device
+    {
+        // Initialize fields
+        kernel_func             = UpsweepKernel<OpaqueCtaUpsweepPassPolicy, MIN_CTA_OCCUPANCY>;
+        tile_items             = CtaUpsweepPassPolicy::TILE_ITEMS;
+        sm_bank_config             = CtaUpsweepPassPolicy::SMEM_CONFIG;
+        radix_bits                = CtaUpsweepPassPolicy::RADIX_BITS;
 
-		// Initialize super class
-		return cub::KernelProps::Init(
-			kernel_func,
-			CtaUpsweepPassPolicy::CTA_THREADS,
-			cuda_props);
-	}
+        // Initialize super class
+        return cub::KernelProps::Init(
+            kernel_func,
+            CtaUpsweepPassPolicy::CTA_THREADS,
+            cuda_props);
+    }
 
-	/**
-	 * Initializer
-	 */
-	template <
-		typename CtaUpsweepPassPolicy,
-		int MIN_CTA_OCCUPANCY>
-	cudaError_t Init(const cub::CudaProps &cuda_props)	// CUDA properties for a specific device
-	{
-		return Init<CtaUpsweepPassPolicy, CtaUpsweepPassPolicy, MIN_CTA_OCCUPANCY>(cuda_props);
-	}
+    /**
+     * Initializer
+     */
+    template <
+        typename CtaUpsweepPassPolicy,
+        int MIN_CTA_OCCUPANCY>
+    cudaError_t Init(const cub::CudaProps &cuda_props)    // CUDA properties for a specific device
+    {
+        return Init<CtaUpsweepPassPolicy, CtaUpsweepPassPolicy, MIN_CTA_OCCUPANCY>(cuda_props);
+    }
 };
 
 

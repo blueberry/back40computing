@@ -107,7 +107,7 @@ __global__ void CtaScanKernel(
 
 	// Per-thread tile data
 	T data[ITEMS_PER_THREAD];
-	CtaLoadDirect(data, d_in, 0);
+	CtaLoadDirect(d_in, data);
 
 	// Record elapsed clocks
 	clock_t start = clock();
@@ -135,7 +135,7 @@ __global__ void CtaScanKernel(
 	*d_elapsed = clock() - start;
 
 	// Store output
-	CtaStoreDirect(data, d_out, 0);
+	CtaStoreDirect(d_out, data);
 
 	// Store aggregate
 	if (threadIdx.x == 0)
@@ -172,7 +172,7 @@ __global__ void CtaScanKernel(
 
 	// Per-thread tile data
 	T data[ITEMS_PER_THREAD];
-	CtaLoadDirect(data, d_in, 0);
+	CtaLoadDirect(d_in, data);
 
 	// Record elapsed clocks
 	clock_t start = clock();
@@ -199,7 +199,7 @@ __global__ void CtaScanKernel(
 	*d_elapsed = clock() - start;
 
 	// Store output
-	CtaStoreDirect(data, d_out, 0);
+	CtaStoreDirect(d_out, data);
 
 	// Store aggregate
 	if (threadIdx.x == 0)
@@ -236,7 +236,7 @@ __global__ void CtaScanKernel(
 
     // Per-thread tile data
     T data[ITEMS_PER_THREAD];
-    CtaLoadDirect(data, d_in, 0);
+    CtaLoadDirect(d_in, data);
 
     // Record elapsed clocks
     clock_t start = clock();
@@ -264,7 +264,7 @@ __global__ void CtaScanKernel(
     *d_elapsed = clock() - start;
 
     // Store output
-    CtaStoreDirect(data, d_out, 0);
+    CtaStoreDirect(d_out, data);
 
     // Store aggregate
     if (threadIdx.x == 0)
@@ -301,7 +301,7 @@ __global__ void CtaScanKernel(
 
     // Per-thread tile data
     T data[ITEMS_PER_THREAD];
-    CtaLoadDirect(data, d_in, 0);
+    CtaLoadDirect(d_in, data);
 
     // Record elapsed clocks
     clock_t start = clock();
@@ -328,7 +328,7 @@ __global__ void CtaScanKernel(
     *d_elapsed = clock() - start;
 
     // Store output
-    CtaStoreDirect(data, d_out, 0);
+    CtaStoreDirect(d_out, data);
 
     // Store aggregate
     if (threadIdx.x == 0)

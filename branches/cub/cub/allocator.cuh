@@ -54,7 +54,7 @@ public:
      * Sets the limit on the number bytes this allocator is allowed to
      * cache per GPU.
      */
-    virtual void SetMaxCachedBytes(size_t max_cached_bytes) = 0;
+    virtual cudaError_t SetMaxCachedBytes(size_t max_cached_bytes) = 0;
 
 
     /**
@@ -310,7 +310,7 @@ struct CachingDeviceAllocator : public DeviceAllocator
 	 * Sets the limit on the number bytes this allocator is allowed to
 	 * cache per GPU.
 	 */
-	void SetMaxCachedBytes(size_t max_cached_bytes)
+	cudaError_t SetMaxCachedBytes(size_t max_cached_bytes)
 	{
 		// Lock
 		Lock(&spin_lock);
@@ -321,6 +321,8 @@ struct CachingDeviceAllocator : public DeviceAllocator
 
 		// Unlock
 		Unlock(&spin_lock);
+
+		return cudaSuccess;
 	}
 
 
@@ -607,47 +609,70 @@ struct CachingDeviceAllocator : public DeviceAllocator
  * CUB allocation operations
  ******************************************************************************/
 
-
 // Pointer to device allocator
 DeviceAllocator *allocator = &default_allocator;
 
-// Custom/caching allocators are unavailable from within device code
+
+/**
+ * Sets the default CUB device allocator to the specified instance
+ */
+cudaError_t SetDeviceAllocator(DeviceAllocator *new_allocator)
+{
 #ifndef __CUDA_ARCH__
-
-    /**
-     * Sets the default CUB device allocator to the specified instance
-     */
-    void SetDeviceAllocator(DeviceAllocator *new_allocator)
-    {
-        allocator = new_allocator;
-    }
-
-    /**
-     * Sets the default CUB device allocator to the specified instance
-     */
-    DeviceAllocator* GetDeviceAllocator()
-    {
-        return allocator;
-    }
-
-    /**
-     * Sets the limit on the number bytes this allocator is allowed to
-     * cache per GPU.
-     */
-    void SetMaxCachedBytes(size_t max_cached_bytes)
-    {
-        return allocator->SetMaxCachedBytes(max_cached_bytes);
-    }
-
-    /**
-     * Frees all cached device allocations on all GPUs
-     */
-    cudaError_t FreeAllCached()
-    {
-        return allocator->FreeAllCached();
-    }
-
+    allocator = new_allocator;
+    return cudaSuccess;
+#else
+    // Custom allocators not available on device code
+    return cudaErrorInvalidResourceHandle;
 #endif
+}
+
+
+/**
+ * Returns a pointer to the default CUB device allocator
+ */
+cudaError_t GetDeviceAllocator(DeviceAllocator** current_allocator)
+{
+#ifndef __CUDA_ARCH__
+    *current_allocator = allocator;
+    return cudaSuccess;
+#else
+    // Custom allocators not available on device code
+    return cudaErrorInvalidResourceHandle;
+#endif
+}
+
+
+/**
+ *
+ * Sets the limit on the number bytes this allocator is allowed to
+ * cache per GPU.
+ */
+cudaError_t SetMaxCachedBytes(size_t max_cached_bytes)
+{
+#ifndef __CUDA_ARCH__
+    if (allocator == NULL) return cudaErrorInvalidResourceHandle;
+    return allocator->SetMaxCachedBytes(max_cached_bytes);
+#else
+    // Custom allocators not available on device code
+    return cudaErrorInvalidResourceHandle;
+#endif
+}
+
+
+/**
+ * Frees all cached device allocations on all GPUs
+ */
+cudaError_t FreeAllCached()
+{
+#ifndef __CUDA_ARCH__
+    if (allocator == NULL) return cudaErrorInvalidResourceHandle;
+    return allocator->FreeAllCached();
+#else
+    // Custom allocators not available on device code
+    return cudaErrorInvalidResourceHandle;
+#endif
+}
 
 
 /**
@@ -657,6 +682,33 @@ DeviceAllocator *allocator = &default_allocator;
 __host__ __device__ __forceinline__ cudaError_t DeviceAllocate(void** d_ptr, size_t bytes, GpuOrdinal gpu)
 {
 #ifndef __CUDA_ARCH__
+
+    // Use CUDA if no default allocator present
+    if (allocator == NULL)
+    {
+        cudaError_t error = cudaSuccess;
+        GpuOrdinal entrypoint_gpu = INVALID_GPU_ORDINAL;
+
+        do
+        {
+            // Set to specified GPU
+            if (error = CubDebug(cudaGetDevice(&entrypoint_gpu))) break;
+            if (error = CubDebug(cudaSetDevice(gpu))) break;
+
+            // Allocate device memory
+            if (error = CubDebug(cudaMalloc(&d_ptr, bytes))) break;
+
+        } while (0);
+
+        // Attempt to revert back to entry-point GPU if necessary
+        if (entrypoint_gpu != INVALID_GPU_ORDINAL)
+        {
+            error = CubDebug(cudaSetDevice(entrypoint_gpu));
+        }
+
+        return error;
+    }
+
     return allocator->DeviceAllocate(d_ptr, bytes, gpu);
 #else
     // Cannot allocate on GPUs from within device code
@@ -672,9 +724,11 @@ __host__ __device__ __forceinline__ cudaError_t DeviceAllocate(void** d_ptr, siz
 __host__ __device__ __forceinline__ cudaError_t DeviceAllocate(void** d_ptr, size_t bytes)
 {
 #ifndef __CUDA_ARCH__
+    // Use CUDA if no default allocator present
+    if (allocator == NULL) return CubDebug(cudaMalloc(&d_ptr, bytes));
     return allocator->DeviceAllocate(d_ptr, bytes);
 #elif __CUDA_ARCH >= 350
-    // Custom/caching allocators are unavailable from within device code
+    // Use CUDA (custom allocators are unavailable from within device code)
     return CubDebug(cudaMalloc(&d_ptr, bytes));
 #else
     // Cannot allocate on GPUs from within device code
@@ -690,7 +744,36 @@ __host__ __device__ __forceinline__ cudaError_t DeviceAllocate(void** d_ptr, siz
 __host__ __device__ __forceinline__ cudaError_t DeviceFree(void* d_ptr, GpuOrdinal gpu)
 {
 #ifndef __CUDA_ARCH__
+
+    // Use CUDA if no default allocator present
+    if (allocator == NULL)
+    {
+        cudaError_t error = cudaSuccess;
+        GpuOrdinal entrypoint_gpu = INVALID_GPU_ORDINAL;
+
+        do
+        {
+            // Set to specified GPU
+            if (error = CubDebug(cudaGetDevice(&entrypoint_gpu))) break;
+            if (error = CubDebug(cudaSetDevice(gpu))) break;
+
+            // Free device memory
+            if (error = CubDebug(cudaFree(d_ptr))) break;
+
+        } while (0);
+
+        // Attempt to revert back to entry-point GPU if necessary
+        if (entrypoint_gpu != INVALID_GPU_ORDINAL)
+        {
+            error = CubDebug(cudaSetDevice(entrypoint_gpu));
+        }
+
+        return error;
+    }
+
+    // Use default allocator
     return allocator->DeviceFree(d_ptr, gpu);
+
 #else
     // Cannot allocate on GPUs from within device code
     return cudaErrorInvalidDevice;
@@ -705,9 +788,11 @@ __host__ __device__ __forceinline__ cudaError_t DeviceFree(void* d_ptr, GpuOrdin
 __host__ __device__ __forceinline__ cudaError_t DeviceFree(void* d_ptr)
 {
 #ifndef __CUDA_ARCH__
+    // Use CUDA if no default allocator present
+    if (allocator == NULL) return CubDebug(cudaFree(d_ptr));
     return allocator->DeviceFree(d_ptr);
 #elif __CUDA_ARCH >= 350
-    // Custom/caching allocators are unavailable from within device code
+    // Use CUDA (custom allocators are unavailable from within device code)
     return CubDebug(cudaFree(d_ptr));
 #else
     // Cannot allocate on GPUs from within device code

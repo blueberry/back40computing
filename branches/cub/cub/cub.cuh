@@ -30,7 +30,7 @@
 
 // CTA
 #include "cta/cta_load.cuh"
-#include "cta/cta_progress.cuh"
+#include "cta/cta_even_share.cuh"
 #include "cta/cta_radix_rank.cuh"
 #include "cta/cta_radix_sort.cuh"
 #include "cta/cta_reduce.cuh"

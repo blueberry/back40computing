@@ -42,7 +42,7 @@ template <
 	typename ReductionOp,		// Type of reduction operator (functor)
 	typename SizeT>				// Integral type for indexing input items
 struct Cta
-	: CtaProgress<				// Progress-management base class
+	: CtaEvenShare<				// Progress-management base class
 		SizeT,
 		KernelPolicy::TILE_ITEMS,
 		KernelPolicy::WORK_STEALING>
@@ -55,10 +55,10 @@ struct Cta
 	typedef typename std::iterator_traits<InputIterator>::value_type T;
 
 	// Progress-management base class
-	typedef CtaProgress<
+	typedef CtaEvenShare<
 		SizeT,
 		KernelPolicy::TILE_ITEMS,
-		KernelPolicy::WORK_STEALING> CtaProgress;
+		KernelPolicy::WORK_STEALING> CtaEvenShare;
 
 	// Tile reader type
 
@@ -100,7 +100,7 @@ struct Cta
 		ReductionOp 					reduction_op,
 		const WorkDistribution			&work_distribution) :
 			// Initializers
-			CtaProgress(work_distribution),
+			CtaEvenShare(work_distribution),
 			d_in(d_in),
 			d_out(d_out),
 			reduction_op(reduction_op)

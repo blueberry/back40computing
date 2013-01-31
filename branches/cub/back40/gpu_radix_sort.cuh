@@ -28,10 +28,12 @@
 #include "ns_wrapper.cuh"
 #include "radix_sort/tuned_policy.cuh"
 #include "radix_sort/sort_utils.cuh"
+/*
 #include "radix_sort/kernel_upsweep_pass.cuh"
 #include "radix_sort/kernel_scan_pass.cuh"
 #include "radix_sort/kernel_downsweep_pass.cuh"
 #include "radix_sort/kernel_single_tile.cuh"
+*/
 #include "radix_sort/kernel_hybrid_pass.cuh"
 
 BACK40_NS_PREFIX
@@ -49,7 +51,7 @@ template <
 	typename KeyType,
 	typename ValueType,
 	typename SizeT>
-struct GpuRadixSort
+struct GpuRadixSortInstance
 {
 	//---------------------------------------------------------------------
 	// Type definitions and constants
@@ -83,10 +85,12 @@ struct GpuRadixSort
 			SizeT> TunedPolicy;
 
 		struct DispatchPolicyT 				: TunedPolicy::DispatchPolicyT {};
+/*
 		struct CtaUpsweepPassPolicyT 		: TunedPolicy::CtaUpsweepPassPolicyT {};
 		struct CtaScanPassPolicyT 			: TunedPolicy::CtaScanPassPolicyT {};
 		struct CtaDownsweepPassPolicyT 		: TunedPolicy::CtaDownsweepPassPolicyT {};
 		struct CtaSingleTilePolicyT 		: TunedPolicy::CtaSingleTilePolicyT {};
+*/
 		struct CtaHybridPassPolicyT 		: TunedPolicy::CtaHybridPassPolicyT {};
 	};
 
@@ -98,20 +102,20 @@ struct GpuRadixSort
 	cub::CudaProps					*cuda_props;
 
 	// Kernel properties
+/*
 	radix_sort::UpsweepKernelProps<KeyType, SizeT> 					upsweep_props;
 	radix_sort::SpineKernelProps<SizeT> 							spine_props;
 	radix_sort::DownsweepKernelProps<KeyType, ValueType, SizeT> 	downsweep_props;
 	radix_sort::SingleTileKernelProps<KeyType, ValueType, SizeT> 	single_tile_props;
+*/
 	radix_sort::HybridKernelProps<KeyType, ValueType, SizeT> 		hybrid_props;
 
-	bool							uniform_grid_size;
-	radix_sort::DynamicSmemConfig	dynamic_smem_config;
-
-	int 							selector;
 	KeyType							*d_keys[2];
 	ValueType						*d_values[2];
 	SizeT							*d_spine;
-	radix_sort::BinDescriptor		*d_bins[2];
+
+    radix_sort::BinDescriptor       *d_large[2];
+	radix_sort::BinDescriptor		*d_small[2];
 
 	cub::GridQueue<SizeT>           q_large[2];
     cub::GridQueue<SizeT>           q_small[2];
@@ -132,11 +136,10 @@ struct GpuRadixSort
 	/**
 	 * Constructor
 	 */
-	GpuRadixSort(
+	GpuRadixSortInstance(
 		cub::CudaProps		*cuda_props,
 		bool 				debug = false) :
 			cuda_props(cuda_props),
-			selector(0),
 			d_spine(NULL),
 			spine_bytes(0),
 			debug(debug)
@@ -145,25 +148,23 @@ struct GpuRadixSort
 		this->d_keys[1] 		= NULL;
 		this->d_values[0] 		= NULL;
 		this->d_values[1] 		= NULL;
-		this->d_bins[0] 		= NULL;
-		this->d_bins[1]			= NULL;
+		this->d_work[0] 		= NULL;
+		this->d_work[1]			= NULL;
 	}
 
 
 	/**
 	 * Destructor
 	 */
-	virtual ~GpuRadixSort()
+	virtual ~GpuRadixSortInstance()
 	{
-        if (d_keys[1]) DeviceFree(d_keys[1]);
-        if (d_values[1]) DeviceFree(d_values[1]);
-        if (d_bins[0]) DeviceFree(d_bins[0]);
-        if (d_bins[1]) DeviceFree(d_bins[1]);
-        if (d_spine) DeviceFree(d_spine);
-        q_large[0].Free();
-        q_large[1].Free();
-        q_small[0].Free();
-        q_small[1].Free();
+        if (d_keys[1]) cub::DeviceFree(d_keys[1]);
+        if (d_values[1]) cub::DeviceFree(d_values[1]);
+        if (d_work[0]) cub::DeviceFree(d_work[0]);
+        if (d_work[1]) cub::DeviceFree(d_work[1]);
+        if (d_spine) cub::DeviceFree(d_spine);
+        q_work[0].Free();
+        q_work[1].Free();
 	}
 
 	/**
@@ -188,9 +189,11 @@ struct GpuRadixSort
 			fflush(stdout);
 		}
 
+		// Initialize kernel functions
 		cudaError_t error = cudaSuccess;
 		do
 		{
+/*
 			// Initialize upsweep kernel props
 			error = upsweep_props.template Init<
 				typename TunedPolicy::CtaUpsweepPassPolicyT,
@@ -223,10 +226,7 @@ struct GpuRadixSort
 				typename OpaqueTunedPolicy::CtaHybridPassPolicyT,
 				TunedPolicy::DispatchPolicyT::HYBRID_MIN_CTA_OCCUPANCY>(*cuda_props);
 			if (CubDebug(error)) break;
-
-			uniform_grid_size 		= TunedPolicy::DispatchPolicyT::UNIFORM_GRID_SIZE;
-			dynamic_smem_config 	= TunedPolicy::DispatchPolicyT::DYNAMIC_SMEM_CONFIG;
-
+*/
 		} while (0);
 
 		return error;
@@ -237,21 +237,19 @@ struct GpuRadixSort
 	 * Configure with specified kernel properties
 	 */
 	cudaError_t Configure(
-		radix_sort::UpsweepKernelProps<KeyType, SizeT> 					upsweep_props,
-		radix_sort::SpineKernelProps<SizeT> 							spine_props,
-		radix_sort::DownsweepKernelProps<KeyType, ValueType, SizeT> 	downsweep_props,
-		radix_sort::SingleTileKernelProps<KeyType, ValueType, SizeT> 	single_tile_props,
-		radix_sort::HybridKernelProps<KeyType, ValueType, SizeT> 		hybrid_props,
-		bool															uniform_grid_size,
-		radix_sort::DynamicSmemConfig									dynamic_smem_config)
+//		radix_sort::UpsweepKernelProps<KeyType, SizeT> 					upsweep_props,
+//		radix_sort::SpineKernelProps<SizeT> 							spine_props,
+//		radix_sort::DownsweepKernelProps<KeyType, ValueType, SizeT> 	downsweep_props,
+//		radix_sort::SingleTileKernelProps<KeyType, ValueType, SizeT> 	single_tile_props,
+		radix_sort::HybridKernelProps<KeyType, ValueType, SizeT> 		hybrid_props)
 	{
+/*
 		this->upsweep_props 		= upsweep_props;
 		this->spine_props 			= spine_props;
 		this->downsweep_props 		= downsweep_props;
 		this->single_tile_props 	= single_tile_props;
+*/
 		this->hybrid_props 			= hybrid_props;
-		this->uniform_grid_size		= uniform_grid_size;
-		this->dynamic_smem_config	= dynamic_smem_config;
 
 		return cudaSuccess;
 	}
@@ -275,7 +273,7 @@ struct GpuRadixSort
 					if (CubDebug(error)) break;
 				}
 				// Allocate
-				error = allocator->Allocate((void**) &d_spine, spine_bytes_needed);
+				error = DeviceAllocate((void**) &d_spine, spine_bytes_needed);
 				if (CubDebug(error)) break;
 				spine_bytes = spine_bytes_needed;
 			}
@@ -289,6 +287,7 @@ struct GpuRadixSort
 	/**
 	 * Dispatch global partitioning pass
 	 */
+/*
 	cudaError_t DispatchGlobalPass(int iteration)
 	{
 		cudaError_t error = cudaSuccess;
@@ -315,41 +314,16 @@ struct GpuRadixSort
 			if (CubDebug(error)) break;
 
 			// Obtain a CTA work distribution
-			cub::CtaProgress<SizeT> cta_progress(
+			cub::CtaEvenShare<SizeT> cta_progress(
 				num_elements,
 				sweep_grid_size,
 				schedule_granularity);
 
 			// Configure grid size
 			int grid_size[3] = {sweep_grid_size, 1, sweep_grid_size};
-			if (uniform_grid_size)
-			{
-				// Change spine grid size so that all kernels launch the same number of CTAs
-				grid_size[1] = grid_size[0];
-			}
 
 			// Configure dynamic smem allocation
 			int dynamic_smem[3] = {0, 0, 0};
-			if (dynamic_smem_config == radix_sort::DYNAMIC_SMEM_UNIFORM)
-			{
-				// Pad with dynamic smem so all kernels get the same total smem allocation
-				int max_static_smem = CUB_MAX(
-					upsweep_props.cta_allocated_smem,
-					CUB_MAX(
-						spine_props.cta_allocated_smem,
-						downsweep_props.cta_allocated_smem));
-
-				dynamic_smem[0] = max_static_smem - upsweep_props.cta_allocated_smem;
-				dynamic_smem[1] = max_static_smem - spine_props.cta_allocated_smem;
-				dynamic_smem[2] = max_static_smem - downsweep_props.cta_allocated_smem;
-			}
-			else if (dynamic_smem_config == radix_sort::DYNAMIC_SMEM_LCM)
-			{
-				// Pad upsweep/downsweep with dynamic smem so kernel occupancy a multiple of the lowest occupancy
-				int min_occupancy = CUB_MIN(upsweep_props.max_cta_occupancy, downsweep_props.max_cta_occupancy);
-				dynamic_smem[0] = upsweep_props.DynamicSmemPadding(min_occupancy);
-				dynamic_smem[2] = downsweep_props.DynamicSmemPadding(min_occupancy);
-			}
 
 			// Print debug info
 			if (debug)
@@ -372,7 +346,7 @@ struct GpuRadixSort
 			cudaDeviceGetSharedMemConfig(&old_sm_config);
 			if (old_sm_config != upsweep_props.sm_bank_config)
 				cudaDeviceSetSharedMemConfig(upsweep_props.sm_bank_config);
-/*
+
 			// Upsweep reduction into spine
 			upsweep_props.kernel_func<<<grid_size[0], upsweep_props.cta_threads, dynamic_smem[0], stream>>>(
 				d_keys[selector],
@@ -400,7 +374,7 @@ struct GpuRadixSort
 			downsweep_props.kernel_func<<<grid_size[2], downsweep_props.cta_threads, dynamic_smem[2], stream>>>(
 				d_counters,
 				d_counters + 4,
-				d_bins[selector ^ 1],
+				d_work[selector ^ 1],
 				d_spine,
 				d_keys[selector],
 				d_keys[selector ^ 1],
@@ -410,7 +384,7 @@ struct GpuRadixSort
 				work,
 				iteration);
 			if (debug && (error = CubDebug(cudaThreadSynchronize()))) break;
-*/
+
 			// Restore smem bank mode
 			if (old_sm_config != downsweep_props.sm_bank_config)
 				cudaDeviceSetSharedMemConfig(old_sm_config);
@@ -422,6 +396,7 @@ struct GpuRadixSort
 
 		return error;
 	}
+*/
 
 
 	/**
@@ -447,13 +422,13 @@ struct GpuRadixSort
 			cudaDeviceGetSharedMemConfig(&old_sm_config);
 			if (old_sm_config != hybrid_props.sm_bank_config)
 				cudaDeviceSetSharedMemConfig(hybrid_props.sm_bank_config);
-
+/*
 			// Tile sorting kernel
 			hybrid_props.kernel_func<<<grid_size, hybrid_props.cta_threads, 0, stream>>>(
 				d_counters,
 				d_counters + 4,
-				d_bins[selector],
-				d_bins[selector ^ 1],
+				d_work[selector],
+				d_work[selector ^ 1],
 				d_keys[selector],
 				d_keys[selector ^ 1],
 				d_keys[0],
@@ -462,15 +437,12 @@ struct GpuRadixSort
 				d_values[0],
 				low_bit,
 				iteration);
-
+*/
 			if (debug && (error = CubDebug(cudaThreadSynchronize()))) break;
 
 			// Restore smem bank mode
 			if (old_sm_config != hybrid_props.sm_bank_config)
 				cudaDeviceSetSharedMemConfig(old_sm_config);
-
-			// Update selector
-			selector ^= 1;
 
 		} while(0);
 
@@ -482,6 +454,7 @@ struct GpuRadixSort
 	/**
 	 * Dispatch single-CTA tile sort
 	 */
+/*
 	cudaError_t DispatchTile()
 	{
 		cudaError_t error = cudaSuccess;
@@ -528,7 +501,7 @@ struct GpuRadixSort
 
 		return error;
 	}
-
+*/
 
 	/**
 	 * Sort
@@ -553,6 +526,7 @@ struct GpuRadixSort
 		cudaError_t error = cudaSuccess;
 		do
 		{
+/*
 			if (num_elements <= single_tile_props.tile_items)
 			{
 				// Single tile sort
@@ -562,16 +536,16 @@ struct GpuRadixSort
 			else
 			{
 				// Allocate temporary keys and values arrays
-				error = allocator->Allocate((void**) &d_keys[1], sizeof(KeyType) * num_elements);
+				error = DeviceAllocate((void**) &d_keys[1], sizeof(KeyType) * num_elements);
 				if (CubDebug(error)) break;
 				if (d_values_in != NULL)
 				{
-					error = allocator->Allocate((void**) &d_values[1], sizeof(ValueType) * num_elements);
+					error = DeviceAllocate((void**) &d_values[1], sizeof(ValueType) * num_elements);
 					if (CubDebug(error)) break;
 				}
 
 				// Allocate work queue counters
-				error = allocator->Allocate((void**) &d_counters, sizeof(unsigned int) * COUNTERS);
+				error = DeviceAllocate((void**) &d_counters, sizeof(unsigned int) * COUNTERS);
 				if (CubDebug(error)) break;
 
 				// Allocate and initialize partition descriptor queues
@@ -579,16 +553,16 @@ struct GpuRadixSort
 	//			int max_partitions = (num_elements + single_tile_props.tile_items - 1) / single_tile_props.tile_items;
 				size_t partition_queue_bytes = sizeof(radix_sort::BinDescriptor) * max_partitions;
 
-				error = allocator->Allocate((void**) &d_bins[0], partition_queue_bytes);
+				error = DeviceAllocate((void**) &d_work[0], partition_queue_bytes);
 				if (CubDebug(error)) break;
-				error = allocator->Allocate((void**) &d_bins[1], partition_queue_bytes);
+				error = DeviceAllocate((void**) &d_work[1], partition_queue_bytes);
 				if (CubDebug(error)) break;
-	/*
-				error = cudaMemset(d_bins[0], 0, partition_queue_bytes);
-				if (CubDebug(error)) break;
-				error = cudaMemset(d_bins[1], 0, partition_queue_bytes);
-				if (CubDebug(error)) break;
-	*/
+
+//				error = cudaMemset(d_work[0], 0, partition_queue_bytes);
+//				if (CubDebug(error)) break;
+//				error = cudaMemset(d_work[1], 0, partition_queue_bytes);
+//				if (CubDebug(error)) break;
+
 				// Dispatch first pass
 				error = DispatchGlobalPass(0);
 				if (CubDebug(error)) break;
@@ -618,6 +592,7 @@ struct GpuRadixSort
 					if (CubDebug(error)) break;
 				}
 			}
+    */
 
 		} while(0);
 
@@ -660,7 +635,7 @@ cudaError_t GpuRadixSort(
 		if (CubDebug(error)) break;
 
 		// Construct and configure problem instance
-		GpuRadixSort<KeyType, ValueType, int> problem_instance(
+		GpuRadixSortInstance<KeyType, ValueType, int> problem_instance(
 			&cuda_props,
 			debug);
 

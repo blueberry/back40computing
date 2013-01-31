@@ -42,7 +42,7 @@ namespace cub {
  * Description of work distribution amongst CTAs
  */
 template <typename SizeT>
-class CtaProgress
+class CtaEvenShare
 {
 private:
 
@@ -61,13 +61,14 @@ public:
     // CTA-specific fields
     SizeT   cta_offset;
     SizeT   cta_oob;
+    SizeT   cta_items;
 
     /**
      * Constructor.
      *
      * Generally constructed in host code one time.
      */
-    __host__ __device__ __forceinline__ CtaProgress(
+    __host__ __device__ __forceinline__ CtaEvenShare(
         SizeT   total_items,
         int     grid_size,
         int     schedule_granularity) :
@@ -111,6 +112,8 @@ public:
         {
             cta_oob = total_items;
         }
+
+        cta_items = cta_oob - cta_offset;
     }
 
 
@@ -124,6 +127,7 @@ public:
             "\tCTA(%d) "
             "cta_offset(%lu) "
             "cta_oob(%lu) "
+            "cta_items(%lu) "
 #endif
             "total_items(%lu)  "
             "big_ctas(%lu)  "
@@ -133,6 +137,7 @@ public:
                 blockIdx.x,
                 (unsigned long) cta_offset,
                 (unsigned long) cta_oob,
+                (unsigned long) cta_items,
 #endif
                 (unsigned long) total_items,
                 (unsigned long) big_ctas,

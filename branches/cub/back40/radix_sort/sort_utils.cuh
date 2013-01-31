@@ -34,32 +34,27 @@ namespace radix_sort {
  * BinDescriptor descriptor
  ******************************************************************************/
 
+enum BinState
+{
+    INVALID,
+    UPSWEEP,
+    SCAN,
+    DOWNSWEEP,
+    LOCAL
+};
+
+
 /**
  * BinDescriptor descriptor
  */
+template <typename SizeT>
 struct BinDescriptor
 {
-	int offset;
-	int num_elements;
-	unsigned int current_bit;
-	unsigned int padding;
-
-	/**
-	 * Constructor
-	 */
-	__device__ __forceinline__ BinDescriptor() {}
-
-	/**
-	 * Constructor
-	 */
-	__device__ __forceinline__ BinDescriptor(
-		int offset,
-		int num_elements,
-		int current_bit) :
-			offset(offset),
-			num_elements(num_elements),
-			current_bit(current_bit)
-				{}
+    int             buffer_selector;        // Which buffer the bin lies in
+    SizeT           buffer_offset;          // Offset from beginning of buffer
+    SizeT           num_items;              // Number of keys in the bin
+    unsigned int    current_bit;            // The current (most-significant) bit
+    BinState        bin_state;              // The status of this bin
 };
 
 
@@ -75,20 +70,20 @@ struct BinDescriptor
 template <typename _UnsignedBits>
 struct UnsignedKeyTraits
 {
-	typedef _UnsignedBits UnsignedBits;
+    typedef _UnsignedBits UnsignedBits;
 
-	static const UnsignedBits MIN_KEY = UnsignedBits(0);
-	static const UnsignedBits MAX_KEY = UnsignedBits(-1);
+    static const UnsignedBits MIN_KEY = UnsignedBits(0);
+    static const UnsignedBits MAX_KEY = UnsignedBits(-1);
 
-	static __device__ __forceinline__ UnsignedBits TwiddleIn(UnsignedBits key)
-	{
-		return key;
-	}
+    static __device__ __forceinline__ UnsignedBits TwiddleIn(UnsignedBits key)
+    {
+        return key;
+    }
 
-	static __device__ __forceinline__ UnsignedBits TwiddleOut(UnsignedBits key)
-	{
-		return key;
-	}
+    static __device__ __forceinline__ UnsignedBits TwiddleOut(UnsignedBits key)
+    {
+        return key;
+    }
 };
 
 
@@ -98,21 +93,21 @@ struct UnsignedKeyTraits
 template <typename _UnsignedBits>
 struct SignedKeyTraits
 {
-	typedef _UnsignedBits UnsignedBits;
+    typedef _UnsignedBits UnsignedBits;
 
-	static const UnsignedBits HIGH_BIT = UnsignedBits(1) << ((sizeof(UnsignedBits) * 8) - 1);
-	static const UnsignedBits MIN_KEY = HIGH_BIT;
-	static const UnsignedBits MAX_KEY = UnsignedBits(-1) ^ HIGH_BIT;
+    static const UnsignedBits HIGH_BIT = UnsignedBits(1) << ((sizeof(UnsignedBits) * 8) - 1);
+    static const UnsignedBits MIN_KEY = HIGH_BIT;
+    static const UnsignedBits MAX_KEY = UnsignedBits(-1) ^ HIGH_BIT;
 
-	static __device__ __forceinline__ UnsignedBits TwiddleIn(UnsignedBits key)
-	{
-		return key ^ HIGH_BIT;
-	};
+    static __device__ __forceinline__ UnsignedBits TwiddleIn(UnsignedBits key)
+    {
+        return key ^ HIGH_BIT;
+    };
 
-	static __device__ __forceinline__ UnsignedBits TwiddleOut(UnsignedBits key)
-	{
-		return key ^ HIGH_BIT;
-	};
+    static __device__ __forceinline__ UnsignedBits TwiddleOut(UnsignedBits key)
+    {
+        return key ^ HIGH_BIT;
+    };
 };
 
 
@@ -122,23 +117,23 @@ struct SignedKeyTraits
 template <typename _UnsignedBits>
 struct FloatKeyTraits
 {
-	typedef _UnsignedBits 	UnsignedBits;
+    typedef _UnsignedBits     UnsignedBits;
 
-	static const UnsignedBits HIGH_BIT = UnsignedBits(1) << ((sizeof(UnsignedBits) * 8) - 1);
-	static const UnsignedBits MIN_KEY = UnsignedBits(-1);
-	static const UnsignedBits MAX_KEY = UnsignedBits(-1) ^ HIGH_BIT;
+    static const UnsignedBits HIGH_BIT = UnsignedBits(1) << ((sizeof(UnsignedBits) * 8) - 1);
+    static const UnsignedBits MIN_KEY = UnsignedBits(-1);
+    static const UnsignedBits MAX_KEY = UnsignedBits(-1) ^ HIGH_BIT;
 
-	static __device__ __forceinline__ UnsignedBits TwiddleIn(UnsignedBits key)
-	{
-		UnsignedBits mask = (key & HIGH_BIT) ? UnsignedBits(-1) : HIGH_BIT;
-		return key ^ mask;
-	};
+    static __device__ __forceinline__ UnsignedBits TwiddleIn(UnsignedBits key)
+    {
+        UnsignedBits mask = (key & HIGH_BIT) ? UnsignedBits(-1) : HIGH_BIT;
+        return key ^ mask;
+    };
 
-	static __device__ __forceinline__ UnsignedBits TwiddleOut(UnsignedBits key)
-	{
-		UnsignedBits mask = (key & HIGH_BIT) ? HIGH_BIT : UnsignedBits(-1);
-		return key ^ mask;
-	};
+    static __device__ __forceinline__ UnsignedBits TwiddleOut(UnsignedBits key)
+    {
+        UnsignedBits mask = (key & HIGH_BIT) ? HIGH_BIT : UnsignedBits(-1);
+        return key ^ mask;
+    };
 
 };
 

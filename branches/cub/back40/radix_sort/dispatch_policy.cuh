@@ -31,37 +31,21 @@ namespace radix_sort {
 
 
 /**
- * Alternative strategies for how much dynamic smem should be allocated to each kernel
- */
-enum DynamicSmemConfig
-{
-	DYNAMIC_SMEM_NONE,			// No dynamic smem for kernels
-	DYNAMIC_SMEM_UNIFORM,		// Uniform: pad with dynamic smem so all kernels get the same total smem allocation
-	DYNAMIC_SMEM_LCM,			// Least-common-multiple: pad with dynamic smem so kernel occupancy a multiple of the lowest occupancy
-};
-
-
-/**
  * Dispatch policy type
  */
 template <
-	int 				_UPSWEEP_MIN_CTA_OCCUPANCY,
-	int 				_DOWNSWEEP_MIN_CTA_OCCUPANCY,
-	int 				_HYBRID_MIN_CTA_OCCUPANCY,
-	DynamicSmemConfig 	_DYNAMIC_SMEM_CONFIG,
-	bool 				_UNIFORM_GRID_SIZE>
+    int                 _UPSWEEP_MIN_CTA_OCCUPANCY,
+    int                 _DOWNSWEEP_MIN_CTA_OCCUPANCY,
+    int                 _HYBRID_MIN_CTA_OCCUPANCY>
 struct DispatchPolicy
 {
-	enum
-	{
-		UPSWEEP_MIN_CTA_OCCUPANCY 		= _UPSWEEP_MIN_CTA_OCCUPANCY,
-		DOWNSWEEP_MIN_CTA_OCCUPANCY 	= _DOWNSWEEP_MIN_CTA_OCCUPANCY,
-		HYBRID_MIN_CTA_OCCUPANCY 		= _HYBRID_MIN_CTA_OCCUPANCY,
+    enum
+    {
+        UPSWEEP_MIN_CTA_OCCUPANCY           = _UPSWEEP_MIN_CTA_OCCUPANCY,
+        DOWNSWEEP_MIN_CTA_OCCUPANCY         = _DOWNSWEEP_MIN_CTA_OCCUPANCY,
+        HYBRID_MIN_CTA_OCCUPANCY            = _HYBRID_MIN_CTA_OCCUPANCY,
+    };
 
-		UNIFORM_GRID_SIZE 				= _UNIFORM_GRID_SIZE,
-	};
-
-	static const DynamicSmemConfig DYNAMIC_SMEM_CONFIG = _DYNAMIC_SMEM_CONFIG;
 };
 
 
