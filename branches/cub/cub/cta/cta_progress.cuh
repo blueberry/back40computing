@@ -46,7 +46,6 @@ class CtaProgress
 {
 private:
 
-    SizeT   total_items;
     SizeT   total_grains;
     int     grid_size;
     int     big_ctas;
@@ -54,11 +53,14 @@ private:
     SizeT   normal_share;
     SizeT   normal_base_offset;
 
+
+public:
+
+    SizeT   total_items;
+
     // CTA-specific fields
     SizeT   cta_offset;
     SizeT   cta_oob;
-
-public:
 
     /**
      * Constructor.
@@ -109,55 +111,6 @@ public:
         {
             cta_oob = total_items;
         }
-    }
-
-
-    /**
-     *
-     */
-    __device__ __forceinline__ SizeT TotalItems()
-    {
-        return total_items;
-    }
-
-
-    /**
-     *
-     */
-    __device__ __forceinline__ SizeT GuardedItems()
-    {
-        return cta_oob - cta_offset;
-    }
-
-
-    /**
-     *
-     */
-    __device__ __forceinline__ bool NextFull(
-        int tile_size,
-        SizeT &cta_offset)
-    {
-        if (this->cta_offset + tile_size <= cta_oob)
-        {
-            cta_offset = this->cta_offset;
-            this->cta_offset += tile_size;
-            return true;
-        }
-        else
-        {
-            return false;
-        }
-    }
-
-
-    /**
-     *
-     */
-    __device__ __forceinline__ bool NextPartial(
-        SizeT &cta_offset)
-    {
-        cta_offset = this->cta_offset;
-        return (cta_offset < cta_oob);
     }
 
 

@@ -46,7 +46,6 @@ namespace back40 {
  * Problem instance
  */
 template <
-	typename Allocator,
 	typename KeyType,
 	typename ValueType,
 	typename SizeT>
@@ -56,17 +55,10 @@ struct GpuRadixSort
 	// Type definitions and constants
 	//---------------------------------------------------------------------
 
-	enum
-	{
-		COUNTERS		= 6,
-	};
-
-
 	/**
 	 * Tuned pass policy whose type signature does not reflect the tuned
 	 * SM architecture.
 	 */
-	template <radix_sort::ProblemSize PROBLEM_SIZE>
 	struct OpaqueTunedPolicy
 	{
 		// The appropriate tuning arch-id from the arch-id targeted by the
@@ -88,8 +80,7 @@ struct GpuRadixSort
 			COMPILER_TUNE_ARCH,
 			KeyType,
 			ValueType,
-			SizeT,
-			PROBLEM_SIZE> TunedPolicy;
+			SizeT> TunedPolicy;
 
 		struct DispatchPolicyT 				: TunedPolicy::DispatchPolicyT {};
 		struct CtaUpsweepPassPolicyT 		: TunedPolicy::CtaUpsweepPassPolicyT {};
@@ -105,7 +96,6 @@ struct GpuRadixSort
 	//---------------------------------------------------------------------
 
 	cub::CudaProps					*cuda_props;
-	Allocator						*allocator;
 
 	// Kernel properties
 	radix_sort::UpsweepKernelProps<KeyType, SizeT> 					upsweep_props;
@@ -122,10 +112,11 @@ struct GpuRadixSort
 	ValueType						*d_values[2];
 	SizeT							*d_spine;
 	radix_sort::BinDescriptor		*d_bins[2];
-	unsigned int					*d_counters;
+
+	cub::GridQueue<SizeT>           q_large[2];
+    cub::GridQueue<SizeT>           q_small[2];
 
 	size_t							spine_bytes;
-
 	SizeT							num_elements;
 	int 							low_bit;
 	int								num_bits;
@@ -143,13 +134,10 @@ struct GpuRadixSort
 	 */
 	GpuRadixSort(
 		cub::CudaProps		*cuda_props,
-		Allocator			*allocator,
 		bool 				debug = false) :
 			cuda_props(cuda_props),
-			allocator(allocator),
 			selector(0),
 			d_spine(NULL),
-			d_counters(NULL),
 			spine_bytes(0),
 			debug(debug)
 	{
@@ -167,24 +155,21 @@ struct GpuRadixSort
 	 */
 	virtual ~GpuRadixSort()
 	{
-		if (allocator)
-		{
-			if (d_keys[1]) allocator->Deallocate(d_keys[1]);
-			if (d_values[1]) allocator->Deallocate(d_values[1]);
-			if (d_bins[0]) allocator->Deallocate(d_bins[0]);
-			if (d_bins[1]) allocator->Deallocate(d_bins[1]);
-			if (d_spine) allocator->Deallocate(d_spine);
-			if (d_counters) allocator->Deallocate(d_counters);
-			spine_bytes = 0;
-		}
+        if (d_keys[1]) DeviceFree(d_keys[1]);
+        if (d_values[1]) DeviceFree(d_values[1]);
+        if (d_bins[0]) DeviceFree(d_bins[0]);
+        if (d_bins[1]) DeviceFree(d_bins[1]);
+        if (d_spine) DeviceFree(d_spine);
+        q_large[0].Free();
+        q_large[1].Free();
+        q_small[0].Free();
+        q_small[1].Free();
 	}
 
 	/**
 	 * Configure with default autotuned kernel properties
 	 */
-	template <
-		int TUNE_ARCH,
-		radix_sort::ProblemSize PROBLEM_SIZE>
+	template <int TUNE_ARCH>
 	cudaError_t Configure()
 	{
 		// Tuned policy
@@ -192,11 +177,7 @@ struct GpuRadixSort
 			TUNE_ARCH,
 			KeyType,
 			ValueType,
-			SizeT,
-			PROBLEM_SIZE> TunedPolicy;
-
-		// Opaque tuned policy
-		typedef OpaqueTunedPolicy<PROBLEM_SIZE> OpaqueTunedPolicy;
+			SizeT> TunedPolicy;
 
 		// Print debug info
 		if (debug)
@@ -290,7 +271,7 @@ struct GpuRadixSort
 				if (d_spine)
 				{
 					// Deallocate
-					error = allocator->Deallocate(d_spine);
+					error = DeviceFree(d_spine);
 					if (CubDebug(error)) break;
 				}
 				// Allocate
@@ -334,7 +315,7 @@ struct GpuRadixSort
 			if (CubDebug(error)) break;
 
 			// Obtain a CTA work distribution
-			cub::CtaWorkDistribution<SizeT> work(
+			cub::CtaProgress<SizeT> cta_progress(
 				num_elements,
 				sweep_grid_size,
 				schedule_granularity);
@@ -343,7 +324,7 @@ struct GpuRadixSort
 			int grid_size[3] = {sweep_grid_size, 1, sweep_grid_size};
 			if (uniform_grid_size)
 			{
-				// Make sure that all kernels launch the same number of CTAs
+				// Change spine grid size so that all kernels launch the same number of CTAs
 				grid_size[1] = grid_size[0];
 			}
 
@@ -391,7 +372,7 @@ struct GpuRadixSort
 			cudaDeviceGetSharedMemConfig(&old_sm_config);
 			if (old_sm_config != upsweep_props.sm_bank_config)
 				cudaDeviceSetSharedMemConfig(upsweep_props.sm_bank_config);
-
+/*
 			// Upsweep reduction into spine
 			upsweep_props.kernel_func<<<grid_size[0], upsweep_props.cta_threads, dynamic_smem[0], stream>>>(
 				d_keys[selector],
@@ -429,7 +410,7 @@ struct GpuRadixSort
 				work,
 				iteration);
 			if (debug && (error = CubDebug(cudaThreadSynchronize()))) break;
-
+*/
 			// Restore smem bank mode
 			if (old_sm_config != downsweep_props.sm_bank_config)
 				cudaDeviceSetSharedMemConfig(old_sm_config);
@@ -437,8 +418,7 @@ struct GpuRadixSort
 			// Update selector
 			selector ^= 1;
 
-		} while(0);		this->debug 			= debug;
-
+		} while(0);
 
 		return error;
 	}
@@ -648,13 +628,14 @@ struct GpuRadixSort
 
 
 /**
- * Enact a large-problem sort.
+ * Perform a radix sorting operation on the given device vector.
+ *
  * @return cudaSuccess on success, error enumeration otherwise
  */
 template <
 	typename KeyType,
 	typename ValueType>
-cudaError_t GpuRadixSortLarge(
+cudaError_t GpuRadixSort(
 	KeyType 		*d_keys,
 	ValueType		*d_values,
 	int 			num_elements,
@@ -673,36 +654,30 @@ cudaError_t GpuRadixSortLarge(
 	cudaError_t error = cudaSuccess;
 	do
 	{
-		const radix_sort::ProblemSize PROBLEM_SIZE = radix_sort::LARGE_PROBLEM;
-
 		// Initialize CUDA props
 		cub::CudaProps cuda_props;
 		error = cuda_props.Init();
 		if (CubDebug(error)) break;
 
-		// Get default allocator
-		cub::CachedAllocator *allocator = cub::CubCachedAllocator<void>();
-
 		// Construct and configure problem instance
-		GpuRadixSort<cub::CachedAllocator, KeyType, ValueType, int> problem_instance(
+		GpuRadixSort<KeyType, ValueType, int> problem_instance(
 			&cuda_props,
-			allocator,
 			debug);
 
 //		if (cuda_props.ptx_version >= 200)
 		{
-			error = problem_instance.template Configure<200, PROBLEM_SIZE>();
+			error = problem_instance.template Configure<200>();
 			if (CubDebug(error)) break;
 		}
 /*
 		else if (cuda_props.ptx_version >= 130)
 		{
-			error = problem_instance.template Configure<130, PROBLEM_SIZE>();
+			error = problem_instance.template Configure<130>();
 			if (CubDebug(error)) break;
 		}
 		else
 		{
-			error = problem_instance.template Configure<100, PROBLEM_SIZE>();
+			error = problem_instance.template Configure<100>();
 			if (CubDebug(error)) break;
 		}
 */

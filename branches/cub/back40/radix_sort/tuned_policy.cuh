@@ -40,24 +40,13 @@ namespace radix_sort {
 
 
 /**
- * Problem size enumerations
- */
-enum ProblemSize
-{
-	LARGE_PROBLEM,		// > 64K elements
-	SMALL_PROBLEM		// <= 64K elements
-};
-
-
-/**
  * Tuned policy specializations
  */
 template <
-	int 			TUNE_ARCH,
-	typename 		KeyType,
-	typename 		ValueType,
-	typename 		SizeT,
-	ProblemSize 	PROBLEM_SIZE>
+    int         TUNE_ARCH,
+    typename    KeyType,
+    typename    ValueType,
+    typename    SizeT>
 struct TunedPolicy;
 
 
@@ -65,81 +54,80 @@ struct TunedPolicy;
  * SM20
  */
 template <
-	typename 		KeyType,
-	typename 		ValueType,
-	typename 		SizeT,
-	ProblemSize 	PROBLEM_SIZE>
-struct TunedPolicy<200, KeyType, ValueType, SizeT, PROBLEM_SIZE>
+    typename    KeyType,
+    typename    ValueType,
+    typename    SizeT>
+struct TunedPolicy<200, KeyType, ValueType, SizeT>
 {
-	enum
-	{
-		RADIX_BITS					= 5,
-		KEYS_ONLY 					= cub::Equals<ValueType, cub::NullType>::VALUE,
-		LARGE_DATA					= (sizeof(KeyType) > 4) || (sizeof(ValueType) > 4),
-	};
+    enum
+    {
+        RADIX_BITS                    = 5,
+        KEYS_ONLY                     = cub::Equals<ValueType, cub::NullType>::VALUE,
+        LARGE_DATA                    = (sizeof(KeyType) > 4) || (sizeof(ValueType) > 4),
+    };
 
-	// Dispatch policy
-	typedef DispatchPolicy <
-		8,										// UPSWEEP_MIN_CTA_OCCUPANCY
-		4,										// DOWNSWEEP_MIN_CTA_OCCUPANCY
-		4,										// HYBRID_MIN_CTA_OCCUPANCY
-		DYNAMIC_SMEM_NONE, 						// UNIFORM_SMEM_ALLOCATION
-		true> 									// UNIFORM_GRID_SIZE
-			DispatchPolicyT;
+    // Dispatch policy
+    typedef DispatchPolicy <
+        8,                                          // UPSWEEP_MIN_CTA_OCCUPANCY
+        4,                                          // DOWNSWEEP_MIN_CTA_OCCUPANCY
+        4,                                          // HYBRID_MIN_CTA_OCCUPANCY
+        DYNAMIC_SMEM_NONE,                          // UNIFORM_SMEM_ALLOCATION
+        true>                                       // UNIFORM_GRID_SIZE
+            DispatchPolicyT;
 
-	// Upsweep pass CTA policy
-	typedef CtaUpsweepPassPolicy<
-		RADIX_BITS,								// RADIX_BITS
-		128,									// CTA_THREADS
-		17,										// THREAD_ITEMS,
-		cub::PTX_LOAD_NONE,							// LOAD_MODIFIER
-		cub::PTX_STORE_NONE,						// STORE_MODIFIER
-		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
-			CtaUpsweepPassPolicyT;
+    // Upsweep pass CTA policy
+    typedef CtaUpsweepPassPolicy<
+        RADIX_BITS,                                 // RADIX_BITS
+        128,                                        // CTA_THREADS
+        17,                                         // THREAD_ITEMS,
+        cub::PTX_LOAD_NONE,                         // LOAD_MODIFIER
+        cub::PTX_STORE_NONE,                        // STORE_MODIFIER
+        cudaSharedMemBankSizeFourByte>              // SMEM_CONFIG
+            CtaUpsweepPassPolicyT;
 
-	// Spine-scan pass CTA policy
-	typedef CtaScanPassPolicy<
-		256,									// CTA_THREADS
-		4,										// THREAD_STRIP_ITEMS
-		4,										// TILE_STRIPS
-		cub::PTX_LOAD_NONE,							// LOAD_MODIFIER
-		cub::PTX_STORE_NONE,						// STORE_MODIFIER
-		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
-			CtaScanPassPolicyT;
+    // Spine-scan pass CTA policy
+    typedef CtaScanPassPolicy<
+        256,                                    // CTA_THREADS
+        4,                                        // THREAD_STRIP_ITEMS
+        4,                                        // TILE_STRIPS
+        cub::PTX_LOAD_NONE,                            // LOAD_MODIFIER
+        cub::PTX_STORE_NONE,                        // STORE_MODIFIER
+        cudaSharedMemBankSizeFourByte>            // SMEM_CONFIG
+            CtaScanPassPolicyT;
 
-	// Downsweep pass CTA policy
-	typedef CtaDownsweepPassPolicy<
-		RADIX_BITS,								// RADIX_BITS
-		128,									// CTA_THREADS
-		17,										// THREAD_ITEMS
-		SCATTER_TWO_PHASE,						// SCATTER_STRATEGY
-		cub::PTX_LOAD_NONE, 						// LOAD_MODIFIER
-		cub::PTX_STORE_NONE,						// STORE_MODIFIER
-		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
-			CtaDownsweepPassPolicyT;
+    // Downsweep pass CTA policy
+    typedef CtaDownsweepPassPolicy<
+        RADIX_BITS,                                // RADIX_BITS
+        128,                                    // CTA_THREADS
+        17,                                        // THREAD_ITEMS
+        SCATTER_TWO_PHASE,                        // SCATTER_STRATEGY
+        cub::PTX_LOAD_NONE,                         // LOAD_MODIFIER
+        cub::PTX_STORE_NONE,                        // STORE_MODIFIER
+        cudaSharedMemBankSizeFourByte>            // SMEM_CONFIG
+            CtaDownsweepPassPolicyT;
 
-	// Single-tile CTA policy
-	typedef CtaSingleTilePolicy<
-		RADIX_BITS,								// RADIX_BITS
-		192,									// CTA_THREADS
-		((KEYS_ONLY) ? 17 : 9), 				// THREAD_ITEMS
-		cub::PTX_LOAD_NONE, 						// LOAD_MODIFIER
-		cub::PTX_STORE_NONE,						// STORE_MODIFIER
-		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
-			CtaSingleTilePolicyT;
+    // Single-tile CTA policy
+    typedef CtaSingleTilePolicy<
+        RADIX_BITS,                                // RADIX_BITS
+        192,                                    // CTA_THREADS
+        ((KEYS_ONLY) ? 17 : 9),                 // THREAD_ITEMS
+        cub::PTX_LOAD_NONE,                         // LOAD_MODIFIER
+        cub::PTX_STORE_NONE,                        // STORE_MODIFIER
+        cudaSharedMemBankSizeFourByte>            // SMEM_CONFIG
+            CtaSingleTilePolicyT;
 
-	// Hybrid pass CTA policy
-	typedef CtaHybridPassPolicy<
-		RADIX_BITS,								// RADIX_BITS
-		128,									// CTA_THREADS
-		17, 									// UPSWEEP_THREAD_ITEMS
-		17, 									// DOWNSWEEP_THREAD_ITEMS
-		SCATTER_TWO_PHASE,						// DOWNSWEEP_SCATTER_STRATEGY
-		((KEYS_ONLY) ? 19 : 9), 				// SINGLE_TILE_THREAD_ITEMS
-		cub::PTX_LOAD_NONE, 						// LOAD_MODIFIER
-		cub::PTX_STORE_NONE,						// STORE_MODIFIER
-		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
-			CtaHybridPassPolicyT;
+    // Hybrid pass CTA policy
+    typedef CtaHybridPassPolicy<
+        RADIX_BITS,                                // RADIX_BITS
+        128,                                    // CTA_THREADS
+        17,                                     // UPSWEEP_THREAD_ITEMS
+        17,                                     // DOWNSWEEP_THREAD_ITEMS
+        SCATTER_TWO_PHASE,                        // DOWNSWEEP_SCATTER_STRATEGY
+        ((KEYS_ONLY) ? 19 : 9),                 // SINGLE_TILE_THREAD_ITEMS
+        cub::PTX_LOAD_NONE,                         // LOAD_MODIFIER
+        cub::PTX_STORE_NONE,                        // STORE_MODIFIER
+        cudaSharedMemBankSizeFourByte>            // SMEM_CONFIG
+            CtaHybridPassPolicyT;
 
 };
 

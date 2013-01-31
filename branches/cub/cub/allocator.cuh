@@ -717,7 +717,5 @@ __host__ __device__ __forceinline__ cudaError_t DeviceFree(void* d_ptr)
 
 
 } // anonymous namespace
-
 } // namespace cub
-
 CUB_NS_POSTFIX

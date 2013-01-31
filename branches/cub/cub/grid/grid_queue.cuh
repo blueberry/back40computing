@@ -68,6 +68,7 @@ public:
     /// Allocate the resources necessary for this GridQueue.
     __host__ __device__ __forceinline__ cudaError_t Allocate()
     {
+        if (d_counters) return cudaErrorInvalidValue;
         return CubDebug(DeviceAllocate((void**)&d_counters, sizeof(SizeT) * 2));
     }
 
@@ -75,6 +76,7 @@ public:
     /// DeviceFree the resources used by this GridQueue.
     __host__ __device__ __forceinline__ cudaError_t Free()
     {
+        if (!d_counters) return cudaErrorInvalidValue;
         cudaError_t error = CubDebug(DeviceFree(d_counters));
         d_counters = NULL;
         return error;
