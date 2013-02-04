@@ -61,7 +61,6 @@ public:
     // CTA-specific fields
     SizeT   cta_offset;
     SizeT   cta_oob;
-    SizeT   cta_items;
 
     /**
      * Constructor.
@@ -112,8 +111,6 @@ public:
         {
             cta_oob = total_items;
         }
-
-        cta_items = cta_oob - cta_offset;
     }
 
 
@@ -127,7 +124,6 @@ public:
             "\tCTA(%d) "
             "cta_offset(%lu) "
             "cta_oob(%lu) "
-            "cta_items(%lu) "
 #endif
             "total_items(%lu)  "
             "big_ctas(%lu)  "
@@ -137,7 +133,6 @@ public:
                 blockIdx.x,
                 (unsigned long) cta_offset,
                 (unsigned long) cta_oob,
-                (unsigned long) cta_items,
 #endif
                 (unsigned long) total_items,
                 (unsigned long) big_ctas,

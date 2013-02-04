@@ -56,6 +56,11 @@ struct KernelProps
 	//---------------------------------------------------------------------
 
 	/**
+	 * Constructor
+	 */
+	KernelProps() {}
+
+	/**
 	 * Initializer
 	 */
 	template <typename KernelPtr>

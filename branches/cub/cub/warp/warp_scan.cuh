@@ -387,7 +387,7 @@ private:
             SmemStorage     &smem_storage,      ///< [in] Shared reference to opaque SmemStorage layout
             T               input,              ///< [in] Calling thread's input item.
             T               &output,            ///< [out] Calling thread's output item.  May be aliased with \p input.
-            T               identity,           ///< [in] Identity value.
+            const T         &identity,          ///< [in] Identity value
             ScanOp          scan_op,            ///< [in] Binary associative scan functor.
             T               &local_aggregate)   ///< [out] <b>[<em>warp-lane</em><sub>0</sub> only]</b> Warp-wide aggregate reduction of input items.
         {
@@ -416,7 +416,7 @@ private:
             SmemStorage     &smem_storage,      ///< [in] Shared reference to opaque SmemStorage layout
             T               input,              ///< [in] Calling thread's input item.
             T               &output,            ///< [out] Calling thread's output item.  May be aliased with \p input.
-            T               identity,           ///< [in] Identity value.
+            const T         &identity,          ///< [in] Identity value
             ScanOp          scan_op)            ///< [in] Binary associative scan functor.
         {
             T local_aggregate;
@@ -651,7 +651,7 @@ private:
             SmemStorage     &smem_storage,      ///< [in] Shared reference to opaque SmemStorage layout
             T               input,              ///< [in] Calling thread's input item.
             T               &output,            ///< [out] Calling thread's output item.  May be aliased with \p input.
-            T               identity,           ///< [in] Identity value.
+            const T         &identity,          ///< [in] Identity value
             ScanOp          scan_op)            ///< [in] Binary associative scan functor.
         {
             // Warp, thread-lane-IDs
@@ -680,7 +680,7 @@ private:
             SmemStorage     &smem_storage,      ///< [in] Shared reference to opaque SmemStorage layout
             T               input,              ///< [in] Calling thread's input item.
             T               &output,            ///< [out] Calling thread's output item.  May be aliased with \p input.
-            T               identity,           ///< [in] Identity value.
+            const T         &identity,          ///< [in] Identity value
             ScanOp          scan_op,            ///< [in] Binary associative scan functor.
             T               &local_aggregate)   ///< [out] <b>[<em>warp-lane</em><sub>0</sub> only]</b> Warp-wide aggregate reduction of input items.
         {
@@ -995,7 +995,7 @@ public:
         SmemStorage     &smem_storage,      ///< [in] Shared reference to opaque SmemStorage layout
         T               input,              ///< [in] Calling thread's input item.
         T               &output,            ///< [out] Calling thread's output item.  May be aliased with \p input.
-        T               identity,           ///< [in] Identity value.
+        const T         &identity,          ///< [in] Identity value
         ScanOp          scan_op)            ///< [in] Binary associative scan functor.
     {
         WarpScanInternal<POLICY>::ExclusiveScan(smem_storage, input, output, identity, scan_op);
@@ -1016,7 +1016,7 @@ public:
         SmemStorage     &smem_storage,      ///< [in] Shared reference to opaque SmemStorage layout
         T               input,              ///< [in] Calling thread's input item.
         T               &output,            ///< [out] Calling thread's output item.  May be aliased with \p input.
-        T               identity,           ///< [in] Identity value.
+        const T         &identity,          ///< [in] Identity value
         ScanOp          scan_op,            ///< [in] Binary associative scan functor.
         T               &local_aggregate)   ///< [out] <b>[<em>warp-lane</em><sub>0</sub> only]</b> Warp-wide aggregate reduction of input items.
     {
@@ -1041,10 +1041,10 @@ public:
         SmemStorage     &smem_storage,      ///< [in] Shared reference to opaque SmemStorage layout
         T               input,              ///< [in] Calling thread's input item.
         T               &output,            ///< [out] Calling thread's output item.  May be aliased with \p input.
-        T               identity,           ///< [in] Identity value.
+        const T         &identity,          ///< [in] Identity value
         ScanOp          scan_op,            ///< [in] Binary associative scan functor.
         T               &local_aggregate,   ///< [out] <b>[<em>warp-lane</em><sub>0</sub> only]</b> Warp-wide aggregate reduction of input items, exclusive of the \p warp_prefix_op value.
-        WarpPrefixOp    &warp_prefix_op)   ///< [in-out] <b>[<em>warp-lane</em><sub>0</sub> only]</b> A call-back unary functor of the model </em>operator()(T local_local_aggregate)</em> to be run <em>warp-lane</em><sub>0</sub>.  When provided the warp-wide aggregate of input items, this functor is expected to return the logical warp-wide prefix to be applied during the scan operation.  Can be stateful.
+        WarpPrefixOp    &warp_prefix_op)    ///< [in-out] <b>[<em>warp-lane</em><sub>0</sub> only]</b> A call-back unary functor of the model </em>operator()(T local_local_aggregate)</em> to be run <em>warp-lane</em><sub>0</sub>.  When provided the warp-wide aggregate of input items, this functor is expected to return the logical warp-wide prefix to be applied during the scan operation.  Can be stateful.
     {
         // Exclusive warp scan
         ExclusiveScan(smem_storage, input, output, identity, scan_op, local_aggregate);

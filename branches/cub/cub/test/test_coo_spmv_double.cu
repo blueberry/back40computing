@@ -409,8 +409,9 @@ struct CooGraph
 template <typename VertexId, typename Value>
 struct PartialSum
 {
-    Value       partial;        /// PartialSum sum
-    VertexId    row;            /// Row-id
+    double      partial;        /// PartialSum sum
+    int         row;            /// Row-id
+    int         padding;
 
     /// Tags indicating this structure provides overloaded ThreadLoad and ThreadStore operations
     typedef void ThreadLoadTag;
@@ -584,9 +585,10 @@ struct SpmvCta
         {
             typename CtaExchangeRows::SmemStorage   exchange_rows;      // Smem needed for striped->blocked transpose
             typename CtaExchangeValues::SmemStorage exchange_values;    // Smem needed for striped->blocked transpose
-            struct {
-                typename CtaScan::SmemStorage           scan;               // Smem needed for reduce-value-by-row scan
+            struct
+            {
                 typename CtaDiscontinuity::SmemStorage  discontinuity;      // Smem needed for head-flagging
+                typename CtaScan::SmemStorage           scan;               // Smem needed for reduce-value-by-row scan
             };
             typename CtaReduce::SmemStorage         reduce;             // Smem needed for min-finding reduction
         };
@@ -644,7 +646,10 @@ struct SpmvCta
         #pragma unroll
         for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
         {
-            values[ITEM] *= tex1Dfetch(TexVector<Value>::ref, columns[ITEM]);
+            Value vec_item;
+            uint2 *v = reinterpret_cast<uint2 *>(&vec_item);
+            *v= tex1Dfetch(TexVector<uint2>::ref, columns[ITEM]);
+            values[ITEM] *= vec_item;
         }
 
         // Load a CTA-striped tile of A (sparse row-ids, column-ids, and values)
@@ -687,7 +692,6 @@ struct SpmvCta
             partial_sums[ITEM].partial = values[ITEM];
             partial_sums[ITEM].row = rows[ITEM];
         }
-
 
         // Compute the exclusive scan of partial_sums
         PartialSum local_aggregate;         // CTA-wide aggregate in thread0 (unused)
@@ -939,7 +943,7 @@ struct FinalizeSpmvCta
         }
 
         // Fence to prevent hoisting any dependent code below into the loads above
-        __syncthreads();
+//        __threadfence_block();
 
         // Copy out row IDs for row-head flagging
         #pragma unroll
@@ -1229,7 +1233,8 @@ void TestDevice(
     CubDebugExit(cudaMemcpy(d_vector,   h_vector,   sizeof(Value) * coo_graph.col_dim, cudaMemcpyHostToDevice));
 
     // Bind textures
-    TexVector<Value>::BindTexture(d_vector, coo_graph.col_dim);
+//    TexVector<Value>::BindTexture(d_vector, coo_graph.col_dim);
+    TexVector<uint2>::BindTexture((uint2 *) d_vector, coo_graph.col_dim);
 
     // Construct an even-share work distribution
     CtaEvenShare<int> cta_progress(num_edges, coo_grid_size, COO_TILE_SIZE);
@@ -1294,7 +1299,8 @@ void TestDevice(
     AssertEquals(0, CompareDeviceResults(h_reference, d_result, coo_graph.row_dim, g_verbose, g_verbose));
 
     // Cleanup
-    TexVector<Value>::UnbindTexture();
+//    TexVector<Value>::UnbindTexture();
+    TexVector<uint2>::UnbindTexture();
     CubDebugExit(DeviceFree(d_cta_partials));
     CubDebugExit(DeviceFree(d_rows));
     CubDebugExit(DeviceFree(d_columns));
@@ -1350,7 +1356,7 @@ int main(int argc, char** argv)
 {
     // Graph of uint32s as vertex ids, floats as values
     typedef int                 VertexId;
-    typedef float               Value;
+    typedef double              Value;
 
     // Initialize command line
     CommandLineArgs args(argc, argv);
@@ -1450,8 +1456,8 @@ int main(int argc, char** argv)
     // Run GPU version
     TestDevice<
         128,
-        10,
-        6,
+        7,
+        5,
         256,
         4>(coo_graph, h_vector, h_reference);
 

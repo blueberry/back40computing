@@ -246,7 +246,7 @@ public:
         SmemStorage     &smem_storage,      ///< [in] Shared reference to opaque SmemStorage layout
         T               input,              ///< [in] Calling thread's input items
         T               &output,            ///< [out] Calling thread's output items (may be aliased to \p input)
-        T               identity,           ///< [in] Identity value
+        const T         &identity,          ///< [in] Identity value
         ScanOp          scan_op,            ///< [in] Binary scan operator
         T               &local_aggregate)   ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> CTA-wide aggregate reduction of input items
     {
@@ -324,7 +324,7 @@ public:
         SmemStorage       &smem_storage,                ///< [in] Shared reference to opaque SmemStorage layout
         T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Calling thread's input items
         T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Calling thread's output items (may be aliased to \p input)
-        T                 identity,                     ///< [in] Identity value
+        const T           &identity,                    ///< [in] Identity value
         ScanOp            scan_op,                      ///< [in] Binary scan operator
         T                 &local_aggregate)             ///< [out] <b>[<em>thread</em><sub>0</sub> only]</b> CTA-wide aggregate reduction of input items
     {
@@ -490,7 +490,7 @@ public:
         SmemStorage       &smem_storage,                ///< [in] Shared reference to opaque SmemStorage layout
         T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Calling thread's input items
         T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Calling thread's output items (may be aliased to \p input)
-        T                 identity,                     ///< [in] Identity value
+        const T           &identity,                    ///< [in] Identity value
         ScanOp            scan_op)                      ///< [in] Binary scan operator
     {
         // Reduce consecutive thread items in registers

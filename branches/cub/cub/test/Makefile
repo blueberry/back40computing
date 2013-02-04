@@ -196,6 +196,16 @@ bin/test_cta_radix_sort_$(SUFFIX) : test_cta_radix_sort.cu $(DEPS)
 
 
 #-------------------------------------------------------------------------------
+# make test_coo_spmv_double
+#-------------------------------------------------------------------------------
+
+test_coo_spmv_double: bin/test_coo_spmv_double_$(SUFFIX)
+
+bin/test_coo_spmv_double_$(SUFFIX) : test_coo_spmv_double.cu $(DEPS)
+	mkdir -p bin
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_coo_spmv_double_$(SUFFIX) test_coo_spmv_double.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3
+
+#-------------------------------------------------------------------------------
 # make test_coo_spmv
 #-------------------------------------------------------------------------------
 
