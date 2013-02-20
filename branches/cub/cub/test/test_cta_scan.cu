@@ -83,12 +83,13 @@ struct CtaPrefixOp
  * Exclusive CtaScan test kernel.
  */
 template <
-	int 		CTA_THREADS,
-	int 		ITEMS_PER_THREAD,
-	TestMode	TEST_MODE,
-	typename 	T,
-	typename 	ScanOp,
-	typename 	IdentityT>
+	int 		    CTA_THREADS,
+	int 		    ITEMS_PER_THREAD,
+	TestMode	    TEST_MODE,
+    CtaScanPolicy   POLICY,
+	typename 	    T,
+	typename 	    ScanOp,
+	typename 	    IdentityT>
 __global__ void CtaScanKernel(
 	T 			*d_in,
 	T 			*d_out,
@@ -100,7 +101,7 @@ __global__ void CtaScanKernel(
 	const int TILE_SIZE = CTA_THREADS * ITEMS_PER_THREAD;
 
 	// Cooperative warp-scan utility type (1 warp)
-	typedef CtaScan<T, CTA_THREADS> CtaScan;
+	typedef CtaScan<T, CTA_THREADS, POLICY> CtaScan;
 
 	// Shared memory
 	__shared__ typename CtaScan::SmemStorage smem_storage;
@@ -149,11 +150,12 @@ __global__ void CtaScanKernel(
  * Inclusive CtaScan test kernel.
  */
 template <
-	int 		CTA_THREADS,
-	int 		ITEMS_PER_THREAD,
-	TestMode	TEST_MODE,
-	typename 	T,
-	typename 	ScanOp>
+	int 		    CTA_THREADS,
+	int 		    ITEMS_PER_THREAD,
+	TestMode	    TEST_MODE,
+    CtaScanPolicy   POLICY,
+	typename 	    T,
+	typename 	    ScanOp>
 __global__ void CtaScanKernel(
 	T 			*d_in,
 	T 			*d_out,
@@ -165,7 +167,7 @@ __global__ void CtaScanKernel(
 	const int TILE_SIZE = CTA_THREADS * ITEMS_PER_THREAD;
 
 	// Cooperative warp-scan utility type (1 warp)
-	typedef CtaScan<T, CTA_THREADS> CtaScan;
+	typedef CtaScan<T, CTA_THREADS, POLICY> CtaScan;
 
 	// Shared memory
 	__shared__ typename CtaScan::SmemStorage smem_storage;
@@ -213,10 +215,11 @@ __global__ void CtaScanKernel(
  * Exclusive CtaScan test kernel (sum)
  */
 template <
-    int         CTA_THREADS,
-    int         ITEMS_PER_THREAD,
-    TestMode    TEST_MODE,
-    typename    T>
+    int             CTA_THREADS,
+    int             ITEMS_PER_THREAD,
+    TestMode        TEST_MODE,
+    CtaScanPolicy   POLICY,
+    typename        T>
 __global__ void CtaScanKernel(
     T                                               *d_in,
     T                                               *d_out,
@@ -229,7 +232,7 @@ __global__ void CtaScanKernel(
     const int TILE_SIZE = CTA_THREADS * ITEMS_PER_THREAD;
 
     // Cooperative warp-scan utility type (1 warp)
-    typedef CtaScan<T, CTA_THREADS> CtaScan;
+    typedef CtaScan<T, CTA_THREADS, POLICY> CtaScan;
 
     // Shared memory
     __shared__ typename CtaScan::SmemStorage smem_storage;
@@ -278,10 +281,11 @@ __global__ void CtaScanKernel(
  * Inclusive CtaScan test kernel (sum)
  */
 template <
-    int         CTA_THREADS,
-    int         ITEMS_PER_THREAD,
-    TestMode    TEST_MODE,
-    typename    T>
+    int             CTA_THREADS,
+    int             ITEMS_PER_THREAD,
+    TestMode        TEST_MODE,
+    CtaScanPolicy   POLICY,
+    typename        T>
 __global__ void CtaScanKernel(
     T                                               *d_in,
     T                                               *d_out,
@@ -294,7 +298,7 @@ __global__ void CtaScanKernel(
     const int TILE_SIZE = CTA_THREADS * ITEMS_PER_THREAD;
 
     // Cooperative warp-scan utility type (1 warp)
-    typedef CtaScan<T, CTA_THREADS> CtaScan;
+    typedef CtaScan<T, CTA_THREADS, POLICY> CtaScan;
 
     // Shared memory
     __shared__ typename CtaScan::SmemStorage smem_storage;
@@ -417,12 +421,13 @@ T Initialize(
  * Test CTA scan
  */
 template <
-	int 		CTA_THREADS,
-	int 		ITEMS_PER_THREAD,
-	TestMode 	TEST_MODE,
-	typename 	ScanOp,
-	typename 	IdentityT,		// NullType implies inclusive-scan, otherwise inclusive scan
-	typename 	T>
+	int 		    CTA_THREADS,
+	int 		    ITEMS_PER_THREAD,
+	TestMode 	    TEST_MODE,
+    CtaScanPolicy   POLICY,
+	typename 	    ScanOp,
+	typename        IdentityT,		// NullType implies inclusive-scan, otherwise inclusive scan
+	typename 	    T>
 void Test(
 	int 		gen_mode,
 	ScanOp 		scan_op,
@@ -457,9 +462,10 @@ void Test(
 	CubDebugExit(cudaMemcpy(d_in, h_in, sizeof(T) * TILE_SIZE, cudaMemcpyHostToDevice));
 
 	// Run kernel
-	printf("Test-mode %d, gen-mode %d, %s CtaScan, %d CTA threads, %d items per thread, %s (%d bytes) elements:\n",
+	printf("Test-mode %d, gen-mode %d, policy %d, %s CtaScan, %d CTA threads, %d items per thread, %s (%d bytes) elements:\n",
 		TEST_MODE,
 		gen_mode,
+		POLICY,
 		(Equals<IdentityT, NullType>::VALUE) ? "Inclusive" : "Exclusive",
 		CTA_THREADS,
 		ITEMS_PER_THREAD,
@@ -479,7 +485,7 @@ void Test(
 	}
 
 	// Run aggregate/prefix kernel
-	CtaScanKernel<CTA_THREADS, ITEMS_PER_THREAD, TEST_MODE><<<1, CTA_THREADS>>>(
+	CtaScanKernel<CTA_THREADS, ITEMS_PER_THREAD, TEST_MODE, POLICY><<<1, CTA_THREADS>>>(
 		d_in,
 		d_out,
 		scan_op,
@@ -513,6 +519,28 @@ void Test(
 	if (h_reference) delete[] h_in;
 	if (d_in) CubDebugExit(cudaFree(d_in));
 	if (d_out) CubDebugExit(cudaFree(d_out));
+}
+
+
+/**
+ * Run test for different policy types
+ */
+template <
+    int             CTA_THREADS,
+    int             ITEMS_PER_THREAD,
+    TestMode        TEST_MODE,
+    typename        ScanOp,
+    typename        IdentityT,
+    typename        T>
+void Test(
+    int         gen_mode,
+    ScanOp      scan_op,
+    IdentityT   identity,
+    T           prefix,
+    char *      type_string)
+{
+    Test<CTA_THREADS, ITEMS_PER_THREAD, TEST_MODE, CTA_SCAN_RAKING>(gen_mode, scan_op, identity, prefix, type_string);
+    Test<CTA_THREADS, ITEMS_PER_THREAD, TEST_MODE, CTA_SCAN_WARPSCANS>(gen_mode, scan_op, identity, prefix, type_string);
 }
 
 
@@ -633,16 +661,16 @@ int main(int argc, char** argv)
 
     if (quick)
     {
-        // Quick exclusive test
-    	Test<128, 4, BASIC>(UNIFORM, Sum<int>(), int(0), int(10), CUB_TYPE_STRING(Sum<int));
-/*
+        // A few tests (for visually verifying basic codegen during SASS-dump when commenting the battery the battery tests below)
+
+        Test<128, 4, BASIC, CTA_SCAN_WARPSCANS>(UNIFORM, Sum<int>(), int(0), int(10), CUB_TYPE_STRING(Sum<int));
+        Test<128, 4, BASIC, CTA_SCAN_RAKING>(UNIFORM, Sum<int>(), int(0), int(10), CUB_TYPE_STRING(Sum<int));
+
         TestFoo prefix = TestFoo::MakeTestFoo(17, 21, 32, 85);
-        Test<128, 2, PREFIX_AGGREGATE>(SEQ_INC, Sum<TestFoo>(), NullType(), prefix, CUB_TYPE_STRING(Sum<TestFoo>));
-*/
+        Test<128, 2, PREFIX_AGGREGATE, CTA_SCAN_RAKING>(SEQ_INC, Sum<TestFoo>(), NullType(), prefix, CUB_TYPE_STRING(Sum<TestFoo>));
     }
     else
     {
-
         // Run battery of tests for different CTA sizes
         Test<17>();
         Test<32>();
@@ -650,7 +678,6 @@ int main(int argc, char** argv)
         Test<65>();
         Test<96>();
         Test<128>();
-
     }
 
     return 0;

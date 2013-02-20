@@ -197,9 +197,6 @@ private:
         POLICY = ((PTX_ARCH >= 300) && Traits<T>::PRIMITIVE && (sizeof(T) <= 4) && POW_OF_TWO) ?
             SHFL_SCAN :
             SMEM_SCAN,
-
-        /// The number of warp scan steps
-        STEPS = Log2<LOGICAL_WARP_THREADS>::VALUE,
     };
 
 
@@ -219,6 +216,9 @@ private:
         /// Constants
         enum
         {
+            /// The number of warp scan steps
+            STEPS = Log2<LOGICAL_WARP_THREADS>::VALUE,
+
             // The 5-bit SHFL mask for logically splitting warps into sub-segments starts 8-bits up
             SHFL_MASK = ((-1 << STEPS) & 31) << 8,
         };
@@ -466,11 +466,12 @@ private:
     template <int DUMMY>
     struct WarpScanInternal<SMEM_SCAN, DUMMY>
     {
-    private:
-
         /// Constants
         enum
         {
+            /// The number of warp scan steps
+            STEPS = Log2<LOGICAL_WARP_THREADS>::VALUE,
+
             /// The number of threads in half a warp
             HALF_WARP_THREADS = 1 << (STEPS - 1),
 
@@ -488,9 +489,6 @@ private:
             T broadcast;
         };
 
-    public:
-
-        typedef SmemStorage SmemStorage;
 
         /// Broadcast
         static __device__ __forceinline__ T Broadcast(
@@ -743,9 +741,8 @@ private:
 
 
     /// Shared memory storage layout type for WarpScan
-    typedef typename If<(POLICY == SHFL_SCAN),
-        typename WarpScanInternal<SHFL_SCAN>::SmemStorage,
-        typename WarpScanInternal<SMEM_SCAN>::SmemStorage>::Type _SmemStorage;
+    typedef typename WarpScanInternal<POLICY>::SmemStorage _SmemStorage;
+
 
 public:
 
