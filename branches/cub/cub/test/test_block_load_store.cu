@@ -1,24 +1,33 @@
 /******************************************************************************
+ * Copyright (c) 2011, Duane Merrill.  All rights reserved.
+ * Copyright (c) 2011-2013, NVIDIA CORPORATION.  All rights reserved.
  *
- * Copyright (c) 2010-2012, Duane Merrill.  All rights reserved.
- * Copyright (c) 2011-2012, NVIDIA CORPORATION.  All rights reserved.
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *     * Neither the name of the NVIDIA CORPORATION nor the
+ *       names of its contributors may be used to endorse or promote products
+ *       derived from this software without specific prior written permission.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  ******************************************************************************/
 
 /******************************************************************************
- * Test of CtaLoad and CtaStore utilities
+ * Test of BlockLoad and BlockStore utilities
  ******************************************************************************/
 
 // Ensure printing of CUDA runtime errors to console
@@ -50,15 +59,15 @@ bool g_verbose = false;
  * Test load/store kernel.
  */
 template <
-    int                 CTA_THREADS,
+    int                 BLOCK_THREADS,
     int                 ITEMS_PER_THREAD,
-    CtaLoadPolicy       LOAD_POLICY,
-    CtaStorePolicy      STORE_POLICY,
+    BlockLoadPolicy       LOAD_POLICY,
+    BlockStorePolicy      STORE_POLICY,
     PtxLoadModifier     LOAD_MODIFIER,
     PtxStoreModifier    STORE_MODIFIER,
     typename            InputIterator,
     typename            OutputIterator>
-__launch_bounds__ (CTA_THREADS, 1)
+__launch_bounds__ (BLOCK_THREADS, 1)
 __global__ void Kernel(
     InputIterator       d_in,
     OutputIterator      d_out_unguarded,
@@ -67,29 +76,29 @@ __global__ void Kernel(
 {
     enum
     {
-        TILE_SIZE = CTA_THREADS * ITEMS_PER_THREAD
+        TILE_SIZE = BLOCK_THREADS * ITEMS_PER_THREAD
     };
 
     // Data type of input/output iterators
     typedef typename std::iterator_traits<InputIterator>::value_type T;
 
-    // CTA load/store abstraction types
-    typedef CtaLoad<InputIterator, CTA_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, LOAD_MODIFIER> CtaLoad;
-    typedef CtaStore<OutputIterator, CTA_THREADS, ITEMS_PER_THREAD, STORE_POLICY, STORE_MODIFIER> CtaStore;
+    // Threadblock load/store abstraction types
+    typedef BlockLoad<InputIterator, BLOCK_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, LOAD_MODIFIER> BlockLoad;
+    typedef BlockStore<OutputIterator, BLOCK_THREADS, ITEMS_PER_THREAD, STORE_POLICY, STORE_MODIFIER> BlockStore;
 
-    // Shared memory type for this CTA
+    // Shared memory type for this threadblock
     union SmemStorage
     {
-        typename CtaLoad::SmemStorage     load;
-        typename CtaStore::SmemStorage     store;
+        typename BlockLoad::SmemStorage     load;
+        typename BlockStore::SmemStorage     store;
     };
 
     // Shared memory
     __shared__ SmemStorage smem_storage;
 
-    // CTA work bounds
-    int cta_offset = blockIdx.x * TILE_SIZE;
-    int guarded_elements = num_elements - cta_offset;
+    // Threadblock work bounds
+    int block_offset = blockIdx.x * TILE_SIZE;
+    int guarded_elements = num_elements - block_offset;
 
     // Test unguarded
     {
@@ -97,12 +106,12 @@ __global__ void Kernel(
         T data[ITEMS_PER_THREAD];
 
         // Load data
-        CtaLoad::Load(smem_storage.load, d_in + cta_offset, data);
+        BlockLoad::Load(smem_storage.load, d_in + block_offset, data);
 
         __syncthreads();
 
         // Store data
-        CtaStore::Store(smem_storage.store, d_out_unguarded + cta_offset, data);
+        BlockStore::Store(smem_storage.store, d_out_unguarded + block_offset, data);
     }
 
     __syncthreads();
@@ -113,12 +122,12 @@ __global__ void Kernel(
         T data[ITEMS_PER_THREAD];
 
         // Load data
-        CtaLoad::Load(smem_storage.load, d_in + cta_offset, guarded_elements, data);
+        BlockLoad::Load(smem_storage.load, d_in + block_offset, guarded_elements, data);
 
         __syncthreads();
 
         // Store data
-        CtaStore::Store(smem_storage.store, d_out_guarded_range + cta_offset, guarded_elements, data);
+        BlockStore::Store(smem_storage.store, d_out_guarded_range + block_offset, guarded_elements, data);
     }
 }
 
@@ -133,10 +142,10 @@ __global__ void Kernel(
  */
 template <
     typename            T,
-    int                 CTA_THREADS,
+    int                 BLOCK_THREADS,
     int                 ITEMS_PER_THREAD,
-    CtaLoadPolicy       LOAD_POLICY,
-    CtaStorePolicy      STORE_POLICY,
+    BlockLoadPolicy       LOAD_POLICY,
+    BlockStorePolicy      STORE_POLICY,
     PtxLoadModifier     LOAD_MODIFIER,
     PtxStoreModifier    STORE_MODIFIER,
     typename            InputIterator,
@@ -149,11 +158,11 @@ void TestKernel(
     int                 grid_size,
     int                 guarded_elements)
 {
-    int unguarded_elements = grid_size * CTA_THREADS * ITEMS_PER_THREAD;
+    int unguarded_elements = grid_size * BLOCK_THREADS * ITEMS_PER_THREAD;
 
     // Run kernel
-    Kernel<CTA_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY, LOAD_MODIFIER, STORE_MODIFIER>
-        <<<grid_size, CTA_THREADS>>>(
+    Kernel<BLOCK_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY, LOAD_MODIFIER, STORE_MODIFIER>
+        <<<grid_size, BLOCK_THREADS>>>(
             d_in,
             d_out_unguarded,
             d_out_guarded_range,
@@ -177,17 +186,17 @@ void TestKernel(
  */
 template <
     typename            T,
-    int                 CTA_THREADS,
+    int                 BLOCK_THREADS,
     int                 ITEMS_PER_THREAD,
-    CtaLoadPolicy       LOAD_POLICY,
-    CtaStorePolicy      STORE_POLICY,
+    BlockLoadPolicy       LOAD_POLICY,
+    BlockStorePolicy      STORE_POLICY,
     PtxLoadModifier     LOAD_MODIFIER,
     PtxStoreModifier    STORE_MODIFIER>
 void TestNative(
     int                 grid_size,
     float               fraction_valid)
 {
-    int unguarded_elements = grid_size * CTA_THREADS * ITEMS_PER_THREAD;
+    int unguarded_elements = grid_size * BLOCK_THREADS * ITEMS_PER_THREAD;
     int guarded_elements = int(fraction_valid * float(unguarded_elements));
 
     // Allocate host arrays
@@ -212,16 +221,16 @@ void TestNative(
         "grid_size(%d) "
         "guarded_elements(%d) "
         "unguarded_elements(%d) "
-        "CTA_THREADS(%d) "
+        "BLOCK_THREADS(%d) "
         "ITEMS_PER_THREAD(%d) "
         "LOAD_POLICY(%d) "
         "STORE_POLICY(%d) "
         "LOAD_MODIFIER(%d) "
         "STORE_MODIFIER(%d) "
         "sizeof(T)(%d)\n",
-            grid_size, guarded_elements, unguarded_elements, CTA_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY, LOAD_MODIFIER, STORE_MODIFIER, (int) sizeof(T));
+            grid_size, guarded_elements, unguarded_elements, BLOCK_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY, LOAD_MODIFIER, STORE_MODIFIER, (int) sizeof(T));
 
-    TestKernel<T, CTA_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY, LOAD_MODIFIER, STORE_MODIFIER>(
+    TestKernel<T, BLOCK_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY, LOAD_MODIFIER, STORE_MODIFIER>(
         h_in,
         d_in,
         d_out_unguarded,
@@ -242,15 +251,15 @@ void TestNative(
  */
 template <
     typename        T,
-    int             CTA_THREADS,
+    int             BLOCK_THREADS,
     int             ITEMS_PER_THREAD,
-    CtaLoadPolicy   LOAD_POLICY,
-    CtaStorePolicy  STORE_POLICY>
+    BlockLoadPolicy   LOAD_POLICY,
+    BlockStorePolicy  STORE_POLICY>
 void TestIterator(
     int             grid_size,
     float           fraction_valid)
 {
-    int unguarded_elements = grid_size * CTA_THREADS * ITEMS_PER_THREAD;
+    int unguarded_elements = grid_size * BLOCK_THREADS * ITEMS_PER_THREAD;
     int guarded_elements = int(fraction_valid * float(unguarded_elements));
 
     // Allocate host arrays
@@ -273,14 +282,14 @@ void TestIterator(
         "grid_size(%d) "
         "guarded_elements(%d) "
         "unguarded_elements(%d) "
-        "CTA_THREADS(%d) "
+        "BLOCK_THREADS(%d) "
         "ITEMS_PER_THREAD(%d) "
         "LOAD_POLICY(%d) "
         "STORE_POLICY(%d) "
         "sizeof(T)(%d)\n",
-            grid_size, guarded_elements, unguarded_elements, CTA_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY, (int) sizeof(T));
+            grid_size, guarded_elements, unguarded_elements, BLOCK_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY, (int) sizeof(T));
 
-    TestKernel<T, CTA_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY, PTX_LOAD_NONE, PTX_STORE_NONE>(
+    TestKernel<T, BLOCK_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY, PTX_LOAD_NONE, PTX_STORE_NONE>(
         h_in,
         counting_itr,
         d_out_unguarded,
@@ -300,18 +309,18 @@ void TestIterator(
  */
 template <
     typename        T,
-    int             CTA_THREADS,
+    int             BLOCK_THREADS,
     int             ITEMS_PER_THREAD,
-    CtaLoadPolicy   LOAD_POLICY,
-    CtaStorePolicy  STORE_POLICY>
+    BlockLoadPolicy   LOAD_POLICY,
+    BlockStorePolicy  STORE_POLICY>
 void TestPointerAccess(
     int             grid_size,
     float           fraction_valid)
 {
-    TestNative<T, CTA_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY, PTX_LOAD_NONE, PTX_STORE_NONE>(grid_size, fraction_valid);
-    TestNative<T, CTA_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY, PTX_LOAD_CG, PTX_STORE_CG>(grid_size, fraction_valid);
-    TestNative<T, CTA_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY, PTX_LOAD_CS, PTX_STORE_CS>(grid_size, fraction_valid);
-    TestIterator<T, CTA_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY>(grid_size, fraction_valid);
+    TestNative<T, BLOCK_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY, PTX_LOAD_NONE, PTX_STORE_NONE>(grid_size, fraction_valid);
+    TestNative<T, BLOCK_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY, PTX_LOAD_CG, PTX_STORE_CG>(grid_size, fraction_valid);
+    TestNative<T, BLOCK_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY, PTX_LOAD_CS, PTX_STORE_CS>(grid_size, fraction_valid);
+    TestIterator<T, BLOCK_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY>(grid_size, fraction_valid);
 }
 
 
@@ -320,15 +329,15 @@ void TestPointerAccess(
  */
 template <
     typename        T,
-    int             CTA_THREADS,
+    int             BLOCK_THREADS,
     int             ITEMS_PER_THREAD>
 void TestStrategy(
     int             grid_size,
     float           fraction_valid)
 {
-    TestPointerAccess<T, CTA_THREADS, ITEMS_PER_THREAD, CTA_LOAD_DIRECT, CTA_STORE_DIRECT>(grid_size, fraction_valid);
-    TestPointerAccess<T, CTA_THREADS, ITEMS_PER_THREAD, CTA_LOAD_TRANSPOSE, CTA_STORE_TRANSPOSE>(grid_size, fraction_valid);
-    TestPointerAccess<T, CTA_THREADS, ITEMS_PER_THREAD, CTA_LOAD_VECTORIZE, CTA_STORE_VECTORIZE>(grid_size, fraction_valid);
+    TestPointerAccess<T, BLOCK_THREADS, ITEMS_PER_THREAD, BLOCK_LOAD_DIRECT, BLOCK_STORE_DIRECT>(grid_size, fraction_valid);
+    TestPointerAccess<T, BLOCK_THREADS, ITEMS_PER_THREAD, BLOCK_LOAD_TRANSPOSE, BLOCK_STORE_TRANSPOSE>(grid_size, fraction_valid);
+    TestPointerAccess<T, BLOCK_THREADS, ITEMS_PER_THREAD, BLOCK_LOAD_VECTORIZE, BLOCK_STORE_VECTORIZE>(grid_size, fraction_valid);
 }
 
 
@@ -337,20 +346,20 @@ void TestStrategy(
  */
 template <
     typename T,
-    int CTA_THREADS>
+    int BLOCK_THREADS>
 void TestItemsPerThread(
     int grid_size,
     float fraction_valid)
 {
-    TestStrategy<T, CTA_THREADS, 1>(grid_size, fraction_valid);
-    TestStrategy<T, CTA_THREADS, 3>(grid_size, fraction_valid);
-    TestStrategy<T, CTA_THREADS, 4>(grid_size, fraction_valid);
-    TestStrategy<T, CTA_THREADS, 8>(grid_size, fraction_valid);
+    TestStrategy<T, BLOCK_THREADS, 1>(grid_size, fraction_valid);
+    TestStrategy<T, BLOCK_THREADS, 3>(grid_size, fraction_valid);
+    TestStrategy<T, BLOCK_THREADS, 4>(grid_size, fraction_valid);
+    TestStrategy<T, BLOCK_THREADS, 8>(grid_size, fraction_valid);
 }
 
 
 /**
- * Evaluate different CTA sizes
+ * Evaluate different threadblock sizes
  */
 template <typename T>
 void TestThreads(

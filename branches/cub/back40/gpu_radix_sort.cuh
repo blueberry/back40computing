@@ -86,12 +86,12 @@ struct GpuRadixSortInstance
 
 		struct DispatchPolicyT 				: TunedPolicy::DispatchPolicyT {};
 /*
-		struct CtaUpsweepPassPolicyT 		: TunedPolicy::CtaUpsweepPassPolicyT {};
-		struct CtaScanPassPolicyT 			: TunedPolicy::CtaScanPassPolicyT {};
-		struct CtaDownsweepPassPolicyT 		: TunedPolicy::CtaDownsweepPassPolicyT {};
-		struct CtaSingleTilePolicyT 		: TunedPolicy::CtaSingleTilePolicyT {};
+		struct BlockUpsweepPassPolicyT 		: TunedPolicy::BlockUpsweepPassPolicyT {};
+		struct BlockScanPassPolicyT 			: TunedPolicy::BlockScanPassPolicyT {};
+		struct BlockDownsweepPassPolicyT 		: TunedPolicy::BlockDownsweepPassPolicyT {};
+		struct BlockSingleTilePolicyT 		: TunedPolicy::BlockSingleTilePolicyT {};
 */
-		struct CtaHybridPassPolicyT 		: TunedPolicy::CtaHybridPassPolicyT {};
+		struct BlockHybridPassPolicyT 		: TunedPolicy::BlockHybridPassPolicyT {};
 	};
 
 
@@ -196,35 +196,35 @@ struct GpuRadixSortInstance
 /*
 			// Initialize upsweep kernel props
 			error = upsweep_props.template Init<
-				typename TunedPolicy::CtaUpsweepPassPolicyT,
-				typename OpaqueTunedPolicy::CtaUpsweepPassPolicyT,
-				TunedPolicy::DispatchPolicyT::UPSWEEP_MIN_CTA_OCCUPANCY>(*cuda_props);
+				typename TunedPolicy::BlockUpsweepPassPolicyT,
+				typename OpaqueTunedPolicy::BlockUpsweepPassPolicyT,
+				TunedPolicy::DispatchPolicyT::UPSWEEP_MIN_BLOCK_OCCUPANCY>(*cuda_props);
 			if (CubDebug(error)) break;
 
 			// Initialize spine kernel props
 			error = spine_props.template Init<
-				typename TunedPolicy::CtaScanPassPolicyT,
-				typename OpaqueTunedPolicy::CtaScanPassPolicyT>(*cuda_props);
+				typename TunedPolicy::BlockScanPassPolicyT,
+				typename OpaqueTunedPolicy::BlockScanPassPolicyT>(*cuda_props);
 			if (CubDebug(error)) break;
 
 			// Initialize downsweep kernel props
 			error = downsweep_props.template Init<
-				typename TunedPolicy::CtaDownsweepPassPolicyT,
-				typename OpaqueTunedPolicy::CtaDownsweepPassPolicyT,
-				TunedPolicy::DispatchPolicyT::DOWNSWEEP_MIN_CTA_OCCUPANCY>(*cuda_props);
+				typename TunedPolicy::BlockDownsweepPassPolicyT,
+				typename OpaqueTunedPolicy::BlockDownsweepPassPolicyT,
+				TunedPolicy::DispatchPolicyT::DOWNSWEEP_MIN_BLOCK_OCCUPANCY>(*cuda_props);
 			if (CubDebug(error)) break;
 
 			// Initialize single-tile kernel props
 			error = single_tile_props.template Init<
-				typename TunedPolicy::CtaSingleTilePolicyT,
-				typename OpaqueTunedPolicy::CtaSingleTilePolicyT>(*cuda_props);
+				typename TunedPolicy::BlockSingleTilePolicyT,
+				typename OpaqueTunedPolicy::BlockSingleTilePolicyT>(*cuda_props);
 			if (CubDebug(error)) break;
 
 			// Initialize hybrid kernel props
 			error = hybrid_props.template Init<
-				typename TunedPolicy::CtaHybridPassPolicyT,
-				typename OpaqueTunedPolicy::CtaHybridPassPolicyT,
-				TunedPolicy::DispatchPolicyT::HYBRID_MIN_CTA_OCCUPANCY>(*cuda_props);
+				typename TunedPolicy::BlockHybridPassPolicyT,
+				typename OpaqueTunedPolicy::BlockHybridPassPolicyT,
+				TunedPolicy::DispatchPolicyT::HYBRID_MIN_BLOCK_OCCUPANCY>(*cuda_props);
 			if (CubDebug(error)) break;
 */
 		} while (0);
@@ -314,7 +314,7 @@ struct GpuRadixSortInstance
 			if (CubDebug(error)) break;
 
 			// Obtain a CTA work distribution
-			cub::CtaEvenShare<SizeT> cta_progress(
+			cub::BlockEvenShare<SizeT> cta_progress(
 				num_elements,
 				sweep_grid_size,
 				schedule_granularity);

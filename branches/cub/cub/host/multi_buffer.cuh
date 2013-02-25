@@ -1,19 +1,28 @@
 /******************************************************************************
+ * Copyright (c) 2011, Duane Merrill.  All rights reserved.
+ * Copyright (c) 2011-2013, NVIDIA CORPORATION.  All rights reserved.
  *
- * Copyright (c) 2010-2012, Duane Merrill.  All rights reserved.
- * Copyright (c) 2011-2012, NVIDIA CORPORATION.  All rights reserved.
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *     * Neither the name of the NVIDIA CORPORATION nor the
+ *       names of its contributors may be used to endorse or promote products
+ *       derived from this software without specific prior written permission.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  ******************************************************************************/
 
@@ -46,36 +55,37 @@ namespace cub {
  * member to index which vector in each set is "currently valid".  I.e., the
  * valid data within "MultiBuffer<2, int, int> b" is accessible by:
  * 
- * 		b.d_keys[b.selector];
+ *         b.d_keys[b.selector];
  * 
  */
 template <
-	int BUFFER_COUNT,
-	typename _KeyType,
-	typename _ValueType = NullType>
+    int BUFFER_COUNT,
+    typename _KeyType,
+    typename _ValueType = NullType>
 struct MultiBuffer
 {
-	typedef _KeyType	KeyType;
-	typedef _ValueType 	ValueType;
+    typedef _KeyType    KeyType;
+    typedef _ValueType     ValueType;
 
-	// Set of device vector pointers for keys
-	KeyType* d_keys[BUFFER_COUNT];
-	
-	// Set of device vector pointers for values
-	ValueType* d_values[BUFFER_COUNT];
+    // Set of device vector pointers for keys
+    KeyType* d_keys[BUFFER_COUNT];
+    
+    // Set of device vector pointers for values
+    ValueType* d_values[BUFFER_COUNT];
 
-	// Selector into the set of device vector pointers (i.e., where the results are)
-	int selector;
+    // Selector into the set of device vector pointers (i.e., where the results are)
+    int selector;
 
-	// Constructor
-	MultiBuffer()
-	{
-		selector = 0;
-		for (int i = 0; i < BUFFER_COUNT; i++) {
-			d_keys[i] = NULL;
-			d_values[i] = NULL;
-		}
-	}
+    // Constructor
+    MultiBuffer()
+    {
+        selector = 0;
+        for (int i = 0; i < BUFFER_COUNT; i++)
+        {
+            d_keys[i] = NULL;
+            d_values[i] = NULL;
+        }
+    }
 };
 
 
@@ -91,22 +101,22 @@ struct MultiBuffer
  *
  * Declaring keys-only storage wrapper:
  *
- * 		DoubleBuffer<KeyType> key_storage;
+ *         DoubleBuffer<KeyType> key_storage;
  *
  * Declaring key-value storage wrapper:
  *
- * 		DoubleBuffer<KeyType, ValueType> key_value_storage;
+ *         DoubleBuffer<KeyType, ValueType> key_value_storage;
  *
  */
 template <
-	typename KeyType,
-	typename ValueType = NullType>
+    typename KeyType,
+    typename ValueType = NullType>
 struct DoubleBuffer : MultiBuffer<2, KeyType, ValueType>
 {
-	typedef MultiBuffer<2, KeyType, ValueType> ParentType;
+    typedef MultiBuffer<2, KeyType, ValueType> ParentType;
 
-	// Constructor
-	DoubleBuffer() : ParentType() {}
+    // Constructor
+    DoubleBuffer() : ParentType() {}
 
 };
 
@@ -115,14 +125,14 @@ struct DoubleBuffer : MultiBuffer<2, KeyType, ValueType>
  * Triple buffer version of the multi-buffer storage abstraction above.
  */
 template <
-	typename KeyType,
-	typename ValueType = NullType>
+    typename KeyType,
+    typename ValueType = NullType>
 struct TripleBuffer : MultiBuffer<3, KeyType, ValueType>
 {
-	typedef MultiBuffer<3, KeyType, ValueType> ParentType;
+    typedef MultiBuffer<3, KeyType, ValueType> ParentType;
 
-	// Constructor
-	TripleBuffer() : ParentType() {}
+    // Constructor
+    TripleBuffer() : ParentType() {}
 };
 
 

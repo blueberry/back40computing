@@ -37,39 +37,39 @@ namespace radix_sort {
  * Kernel entry point
  */
 template <
-    typename    CtaUpsweepPassPolicy,
-    int         MIN_CTA_OCCUPANCY,
+    typename    BlockUpsweepPassPolicy,
+    int         MIN_BLOCK_OCCUPANCY,
     typename    KeyType,
     typename    SizeT>
 __launch_bounds__ (
-    CtaUpsweepPassPolicy::CTA_THREADS,
-    MIN_CTA_OCCUPANCY)
+    BlockUpsweepPassPolicy::BLOCK_THREADS,
+    MIN_BLOCK_OCCUPANCY)
 __global__
 void UpsweepKernel(
     KeyType                     *d_keys_in,
     SizeT                       *d_spine,
-    cub::CtaEvenShare<SizeT>    cta_even_share,
+    cub::BlockEvenShare<SizeT>    cta_even_share,
     unsigned int                current_bit)
 {
     // Constants
     enum
     {
-        TILE_ITEMS      = CtaUpsweepPassPolicy::TILE_ITEMS,
-        RADIX_DIGITS    = 1 << CtaUpsweepPassPolicy::RADIX_BITS,
+        TILE_ITEMS      = BlockUpsweepPassPolicy::TILE_ITEMS,
+        RADIX_DIGITS    = 1 << BlockUpsweepPassPolicy::RADIX_BITS,
     };
 
     // CTA abstraction types
-    typedef CtaUpsweepPass<CtaUpsweepPassPolicy, KeyType, SizeT> CtaUpsweepPassT;
+    typedef BlockUpsweepPass<BlockUpsweepPassPolicy, KeyType, SizeT> BlockUpsweepPassT;
 
     // Shared data structures
-    __shared__ typename CtaUpsweepPassT::SmemStorage smem_storage;
+    __shared__ typename BlockUpsweepPassT::SmemStorage smem_storage;
 
     // Determine our threadblock's work range
     cta_even_share.Init();
 
     // Compute bin-count for each radix digit (valid in the first RADIX_DIGITS threads)
     SizeT bin_count;
-    CtaUpsweepPassT::UpsweepPass(
+    BlockUpsweepPassT::UpsweepPass(
         smem_storage,
         d_keys_in + cta_even_share.cta_offset,
         current_bit,
@@ -97,7 +97,7 @@ struct UpsweepKernelProps : cub::KernelProps
     typedef void (*KernelFunc)(
         KeyType*,
         SizeT*,
-        cub::CtaEvenShare<SizeT>,
+        cub::BlockEvenShare<SizeT>,
         unsigned int);
 
     // Fields
@@ -110,21 +110,21 @@ struct UpsweepKernelProps : cub::KernelProps
      * Initializer
      */
     template <
-        typename CtaUpsweepPassPolicy,
-        typename OpaqueCtaUpsweepPassPolicy,
-        int MIN_CTA_OCCUPANCY>
+        typename BlockUpsweepPassPolicy,
+        typename OpaqueBlockUpsweepPassPolicy,
+        int MIN_BLOCK_OCCUPANCY>
     cudaError_t Init(const cub::CudaProps &cuda_props)    // CUDA properties for a specific device
     {
         // Initialize fields
-        kernel_func             = UpsweepKernel<OpaqueCtaUpsweepPassPolicy, MIN_CTA_OCCUPANCY>;
-        tile_items             = CtaUpsweepPassPolicy::TILE_ITEMS;
-        sm_bank_config             = CtaUpsweepPassPolicy::SMEM_CONFIG;
-        radix_bits                = CtaUpsweepPassPolicy::RADIX_BITS;
+        kernel_func             = UpsweepKernel<OpaqueBlockUpsweepPassPolicy, MIN_BLOCK_OCCUPANCY>;
+        tile_items             = BlockUpsweepPassPolicy::TILE_ITEMS;
+        sm_bank_config             = BlockUpsweepPassPolicy::SMEM_CONFIG;
+        radix_bits                = BlockUpsweepPassPolicy::RADIX_BITS;
 
         // Initialize super class
         return cub::KernelProps::Init(
             kernel_func,
-            CtaUpsweepPassPolicy::CTA_THREADS,
+            BlockUpsweepPassPolicy::BLOCK_THREADS,
             cuda_props);
     }
 
@@ -132,11 +132,11 @@ struct UpsweepKernelProps : cub::KernelProps
      * Initializer
      */
     template <
-        typename CtaUpsweepPassPolicy,
-        int MIN_CTA_OCCUPANCY>
+        typename BlockUpsweepPassPolicy,
+        int MIN_BLOCK_OCCUPANCY>
     cudaError_t Init(const cub::CudaProps &cuda_props)    // CUDA properties for a specific device
     {
-        return Init<CtaUpsweepPassPolicy, CtaUpsweepPassPolicy, MIN_CTA_OCCUPANCY>(cuda_props);
+        return Init<BlockUpsweepPassPolicy, BlockUpsweepPassPolicy, MIN_BLOCK_OCCUPANCY>(cuda_props);
     }
 };
 

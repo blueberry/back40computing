@@ -47,7 +47,7 @@ namespace radix_sort {
  */
 template <
     int                         RADIX_BITS,                     // The number of radix bits, i.e., log2(bins)
-    int                         _CTA_THREADS,                   // The number of threads per CTA
+    int                         _BLOCK_THREADS,                   // The number of threads per CTA
 
     int                         UPSWEEP_THREAD_ITEMS,           // The number of consecutive upsweep items to load per thread per tile
     int                         DOWNSWEEP_THREAD_ITEMS,         // The number of consecutive downsweep items to load per thread per tile
@@ -57,42 +57,42 @@ template <
     cub::PtxLoadModifier        LOAD_MODIFIER,                  // Load cache-modifier
     cub::PtxStoreModifier       STORE_MODIFIER,                 // Store cache-modifier
     cudaSharedMemConfig         _SMEM_CONFIG>                   // Shared memory bank size
-struct CtaHybridPassPolicy
+struct BlockHybridPassPolicy
 {
     enum
     {
-        CTA_THREADS = _CTA_THREADS,
+        BLOCK_THREADS = _BLOCK_THREADS,
     };
 
     static const cudaSharedMemConfig SMEM_CONFIG = _SMEM_CONFIG;
 /*
     // Upsweep pass policy
-    typedef CtaUpsweepPassPolicy<
+    typedef BlockUpsweepPassPolicy<
         RADIX_BITS,
-        CTA_THREADS,
+        BLOCK_THREADS,
         UPSWEEP_THREAD_ITEMS,
         LOAD_MODIFIER,
         STORE_MODIFIER,
-        SMEM_CONFIG> CtaUpsweepPassPolicyT;
+        SMEM_CONFIG> BlockUpsweepPassPolicyT;
 
     // Downsweep pass policy
-    typedef CtaDownsweepPassPolicy<
+    typedef BlockDownsweepPassPolicy<
         RADIX_BITS,
-        CTA_THREADS,
+        BLOCK_THREADS,
         DOWNSWEEP_THREAD_ITEMS,
         DOWNSWEEP_SCATTER_STRATEGY,
         LOAD_MODIFIER,
         STORE_MODIFIER,
-        SMEM_CONFIG> CtaDownsweepPassPolicyT;
+        SMEM_CONFIG> BlockDownsweepPassPolicyT;
 
     // Single tile policy
-    typedef CtaSingleTilePolicy<
+    typedef BlockSingleTilePolicy<
         RADIX_BITS,
-        CTA_THREADS,
+        BLOCK_THREADS,
         SINGLE_TILE_THREAD_ITEMS,
         LOAD_MODIFIER,
         STORE_MODIFIER,
-        SMEM_CONFIG> CtaSingleTilePolicyT;
+        SMEM_CONFIG> BlockSingleTilePolicyT;
 */
 };
 
@@ -130,61 +130,61 @@ struct HybridKernelParams
  * Kernel entry point
  */
 template <
-    typename    CtaHybridPassPolicy,
-    int         MIN_CTA_OCCUPANCY,
+    typename    BlockHybridPassPolicy,
+    int         MIN_BLOCK_OCCUPANCY,
     typename    SizeT,
     typename    KeyType,
     typename    ValueType>
 __launch_bounds__ (
-    CtaHybridPassPolicy::CTA_THREADS,
-    MIN_CTA_OCCUPANCY)
+    BlockHybridPassPolicy::BLOCK_THREADS,
+    MIN_BLOCK_OCCUPANCY)
 __global__
 void HybridKernel(
     HybridKernelParams<SizeT, KeyType, ValueType> params)
 {
     enum
     {
-        CTA_THREADS         = CtaHybridPassPolicy::CTA_THREADS,
+        BLOCK_THREADS         = BlockHybridPassPolicy::BLOCK_THREADS,
 /*
-        GLOBAL_RADIX_BITS   = CtaHybridPassPolicy::CtaUpsweepPassPolicyT::RADIX_BITS,
+        GLOBAL_RADIX_BITS   = BlockHybridPassPolicy::BlockUpsweepPassPolicyT::RADIX_BITS,
         GLOBAL_RADIX_DIGITS = 1 << RADIX_BITS,
 
-        LARGE_RADIX_BITS    = CtaHybridPassPolicy::CtaUpsweepPassPolicyT::RADIX_BITS,
+        LARGE_RADIX_BITS    = BlockHybridPassPolicy::BlockUpsweepPassPolicyT::RADIX_BITS,
         LARGE_RADIX_DIGITS  = 1 << RADIX_BITS,
 
-        SMALL_RADIX_BITS    = CtaHybridPassPolicy::CtaUpsweepPassPolicyT::RADIX_BITS,
+        SMALL_RADIX_BITS    = BlockHybridPassPolicy::BlockUpsweepPassPolicyT::RADIX_BITS,
         SMALL_RADIX_DIGITS  = 1 << RADIX_BITS,
 */
         WARP_THREADS        = cub::DeviceProps::WARP_THREADS,
 
-//        SINGLE_TILE_ITEMS   = CtaHybridPassPolicy::CtaSingleTilePolicyT::TILE_ITEMS,
+//        SINGLE_TILE_ITEMS   = BlockHybridPassPolicy::BlockSingleTilePolicyT::TILE_ITEMS,
     };
 
 /*
     // CTA upsweep abstraction
-    typedef CtaUpsweepPass<
-        typename CtaHybridPassPolicy::CtaUpsweepPassPolicyT,
+    typedef BlockUpsweepPass<
+        typename BlockHybridPassPolicy::BlockUpsweepPassPolicyT,
         KeyType,
-        SizeT> CtaUpsweepPassT;
+        SizeT> BlockUpsweepPassT;
 
     // CTA downsweep abstraction
-    typedef CtaDownsweepPass<
-        typename CtaHybridPassPolicy::CtaDownsweepPassPolicyT,
+    typedef BlockDownsweepPass<
+        typename BlockHybridPassPolicy::BlockDownsweepPassPolicyT,
         KeyType,
         ValueType,
-        SizeT> CtaDownsweepPassT;
+        SizeT> BlockDownsweepPassT;
 
     // CTA single-tile abstraction
-    typedef CtaSingleTile<
-        typename CtaHybridPassPolicy::CtaSingleTilePolicyT,
+    typedef BlockSingleTile<
+        typename BlockHybridPassPolicy::BlockSingleTilePolicyT,
         KeyType,
-        ValueType> CtaSingleTileT;
+        ValueType> BlockSingleTileT;
 
     // CTA single-tile abstraction
-    typedef CtaSingleTile<
-        typename CtaHybridPassPolicy::CtaSingleTilePolicyT1,
+    typedef BlockSingleTile<
+        typename BlockHybridPassPolicy::BlockSingleTilePolicyT1,
         KeyType,
-        ValueType> CtaSingleTileT1;
+        ValueType> BlockSingleTileT1;
 
     // Warp scan abstraction
     typedef cub::WarpScan<
@@ -193,9 +193,9 @@ void HybridKernel(
         RADIX_DIGITS> WarpScanT;
 
     // CTA scan abstraction
-    typedef cub::CtaScan<
+    typedef cub::BlockScan<
         SizeT,
-        CTA_THREADS> CtaScanT;
+        BLOCK_THREADS> BlockScanT;
 */
 
     /**
@@ -206,11 +206,11 @@ void HybridKernel(
 /*
         union
         {
-            typename CtaUpsweepPassT::SmemStorage       upsweep_storage;
-            typename CtaDownsweepPassT::SmemStorage     downsweep_storage;
-            typename CtaSingleTileT::SmemStorage        single_storage;
+            typename BlockUpsweepPassT::SmemStorage       upsweep_storage;
+            typename BlockDownsweepPassT::SmemStorage     downsweep_storage;
+            typename BlockSingleTileT::SmemStorage        single_storage;
             typename WarpScanT::SmemStorage             warp_scan_storage;
-            typename CtaScanT::SmemStorage              cta_scan_storage;
+            typename BlockScanT::SmemStorage              cta_scan_storage;
         };
 
         volatile SizeT                       shared_bin_count[RADIX_DIGITS];
@@ -344,7 +344,7 @@ void HybridKernel(
         else if (num_elements <= SINGLE_TILE_ITEMS)
         {
             // Sort input tile
-            CtaSingleTileT::Sort(
+            BlockSingleTileT::Sort(
                 smem_storage.single_storage,
                 d_keys_in + cta_offset,
                 d_keys_final + cta_offset,
@@ -360,7 +360,7 @@ void HybridKernel(
             SizeT bin_prefix = 0;
 
             // Compute bin-count for each radix digit (valid in tid < RADIX_DIGITS)
-            CtaUpsweepPassT::UpsweepPass(
+            BlockUpsweepPassT::UpsweepPass(
                 smem_storage.upsweep_storage,
                 d_keys_in + cta_offset,
                 current_bit,
@@ -448,7 +448,7 @@ void HybridKernel(
             }
 
             // Distribute keys
-            CtaDownsweepPassT::DownsweepPass(
+            BlockDownsweepPassT::DownsweepPass(
                 smem_storage.downsweep_storage,
                 bin_prefix,
                 d_keys_in + cta_offset,
@@ -494,29 +494,29 @@ struct HybridKernelProps : cub::KernelProps
      * Initializer
      */
     template <
-        typename CtaHybridPassPolicy,
-        typename OpaqueCtaHybridPassPolicy,
-        int MIN_CTA_OCCUPANCY>
+        typename BlockHybridPassPolicy,
+        typename OpaqueBlockHybridPassPolicy,
+        int MIN_BLOCK_OCCUPANCY>
     cudaError_t Init(const cub::CudaProps &cuda_props)    // CUDA properties for a specific device
     {
         // Initialize fields
-        kernel_func             = HybridKernel<OpaqueCtaHybridPassPolicy, MIN_CTA_OCCUPANCY, SizeT>;
-        sm_bank_config          = CtaHybridPassPolicy::SMEM_CONFIG;
+        kernel_func             = HybridKernel<OpaqueBlockHybridPassPolicy, MIN_BLOCK_OCCUPANCY, SizeT>;
+        sm_bank_config          = BlockHybridPassPolicy::SMEM_CONFIG;
 
         // Initialize super class
         return cub::KernelProps::Init(
             kernel_func,
-            CtaHybridPassPolicy::CTA_THREADS,
+            BlockHybridPassPolicy::BLOCK_THREADS,
             cuda_props);
     }
 
     /**
      * Initializer
      */
-    template <typename CtaHybridPassPolicy>
+    template <typename BlockHybridPassPolicy>
     cudaError_t Init(const cub::CudaProps &cuda_props)    // CUDA properties for a specific device
     {
-        return Init<CtaHybridPassPolicy, CtaHybridPassPolicy>(cuda_props);
+        return Init<BlockHybridPassPolicy, BlockHybridPassPolicy>(cuda_props);
     }
 
 };

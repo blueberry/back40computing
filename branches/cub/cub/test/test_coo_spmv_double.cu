@@ -1,19 +1,28 @@
 /******************************************************************************
+ * Copyright (c) 2011, Duane Merrill.  All rights reserved.
+ * Copyright (c) 2011-2013, NVIDIA CORPORATION.  All rights reserved.
  *
- * Copyright (c) 2010-2012, Duane Merrill.  All rights reserved.
- * Copyright (c) 2011-2012, NVIDIA CORPORATION.  All rights reserved.
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *     * Neither the name of the NVIDIA CORPORATION nor the
+ *       names of its contributors may be used to endorse or promote products
+ *       derived from this software without specific prior written permission.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  ******************************************************************************/
 
@@ -509,23 +518,23 @@ struct MinRowOp
 };
 
 
-// Callback functor for waiting on the previous CTA to compute its partial sum (the prefix for this CTA)
+// Callback functor for waiting on the previous threadblock to compute its partial sum (the prefix for this threadblock)
 template <typename PartialSum>
-struct CtaPrefixOp
+struct BlockPrefixOp
 {
     PartialSum prefix;
 
     /**
-     * CTA-wide prefix callback functor called by thread-0 in CtaScan::ExclusiveScan().
-     * Returns the CTA-wide prefix to apply to all scan inputs.
+     * Threadblock-wide prefix callback functor called by thread-0 in BlockScan::ExclusiveScan().
+     * Returns the threadblock-wide prefix to apply to all scan inputs.
      */
     __device__ __forceinline__ PartialSum operator()(
-        const PartialSum &local_aggregate)              ///< The aggregate sum of the local prefix sum inputs
+        const PartialSum &block_aggregate)              ///< The aggregate sum of the local prefix sum inputs
     {
         ReduceByKeyOp scan_op;
 
         PartialSum retval = prefix;
-        prefix = scan_op(prefix, local_aggregate);
+        prefix = scan_op(prefix, block_aggregate);
         return retval;
     }
 };
@@ -546,14 +555,14 @@ struct NewRowOp
 
 
 /**
- * CTA abstraction for processing sparse SPMV tiles
+ * Threadblock abstraction for processing sparse SPMV tiles
  */
 template <
-    int             CTA_THREADS,
+    int             BLOCK_THREADS,
     int             ITEMS_PER_THREAD,
     typename        VertexId,
     typename        Value>
-struct SpmvCta
+struct SpmvBlock
 {
     //---------------------------------------------------------------------
     // Types and constants
@@ -562,7 +571,7 @@ struct SpmvCta
     // Constants
     enum
     {
-        TILE_ITEMS = CTA_THREADS * ITEMS_PER_THREAD,
+        TILE_ITEMS = BLOCK_THREADS * ITEMS_PER_THREAD,
     };
 
     // Head flag type
@@ -571,29 +580,29 @@ struct SpmvCta
     // Dot product partial sum type
     typedef PartialSum<VertexId, Value> PartialSum;
 
-    // Parameterized CUB types for use in the current problem context
-    typedef CtaScan<PartialSum, CTA_THREADS>                        CtaScan;
-    typedef CtaExchange<VertexId, CTA_THREADS, ITEMS_PER_THREAD>    CtaExchangeRows;
-    typedef CtaExchange<Value, CTA_THREADS, ITEMS_PER_THREAD>       CtaExchangeValues;
-    typedef CtaDiscontinuity<HeadFlag, CTA_THREADS>                 CtaDiscontinuity;
-    typedef CtaReduce<PartialSum, CTA_THREADS>                      CtaReduce;
+    // Parameterized CUB types for use in the current execution context
+    typedef BlockScan<PartialSum, BLOCK_THREADS>                        BlockScan;
+    typedef BlockExchange<VertexId, BLOCK_THREADS, ITEMS_PER_THREAD>    BlockExchangeRows;
+    typedef BlockExchange<Value, BLOCK_THREADS, ITEMS_PER_THREAD>       BlockExchangeValues;
+    typedef BlockDiscontinuity<HeadFlag, BLOCK_THREADS>                 BlockDiscontinuity;
+    typedef BlockReduce<PartialSum, BLOCK_THREADS>                      BlockReduce;
 
-    // Shared memory type for this CTA
+    // Shared memory type for this threadblock
     struct SmemStorage
     {
         union
         {
-            typename CtaExchangeRows::SmemStorage   exchange_rows;      // Smem needed for striped->blocked transpose
-            typename CtaExchangeValues::SmemStorage exchange_values;    // Smem needed for striped->blocked transpose
+            typename BlockExchangeRows::SmemStorage   exchange_rows;      // Smem needed for striped->blocked transpose
+            typename BlockExchangeValues::SmemStorage exchange_values;    // Smem needed for striped->blocked transpose
             struct
             {
-                typename CtaDiscontinuity::SmemStorage  discontinuity;      // Smem needed for head-flagging
-                typename CtaScan::SmemStorage           scan;               // Smem needed for reduce-value-by-row scan
+                typename BlockDiscontinuity::SmemStorage  discontinuity;      // Smem needed for head-flagging
+                typename BlockScan::SmemStorage           scan;               // Smem needed for reduce-value-by-row scan
             };
-            typename CtaReduce::SmemStorage         reduce;             // Smem needed for min-finding reduction
+            typename BlockReduce::SmemStorage         reduce;             // Smem needed for min-finding reduction
         };
 
-        VertexId        last_cta_row;
+        VertexId        last_block_row;
         VertexId        prev_tile_row;
         PartialSum      identity;
         PartialSum      first_scatter;
@@ -609,13 +618,13 @@ struct SpmvCta
     __device__ __forceinline__
     static void ProcessTile(
         SmemStorage                     &smem_storage,
-        CtaPrefixOp<PartialSum>         &carry,
+        BlockPrefixOp<PartialSum>         &carry,
         VertexId*                       d_rows,
         VertexId*                       d_columns,
         Value*                          d_values,
         Value*                          d_vector,
         Value*                          d_result,
-        int                             cta_offset,
+        int                             block_offset,
         int                             guarded_items = 0)
     {
         VertexId    columns[ITEMS_PER_THREAD];
@@ -624,19 +633,19 @@ struct SpmvCta
         PartialSum  partial_sums[ITEMS_PER_THREAD];
         HeadFlag    head_flags[ITEMS_PER_THREAD];
 
-        // Load a CTA-striped tile of A (sparse row-ids, column-ids, and values)
+        // Load a threadblock-striped tile of A (sparse row-ids, column-ids, and values)
         if (guarded_items)
         {
             // This is a partial-tile (e.g., the last tile of input).  Extend the coordinates of the last
             // vertex for out-of-bound items, but zero-valued
-            CtaLoadDirectStriped(d_columns + cta_offset, guarded_items, VertexId(0), columns, CTA_THREADS);
-            CtaLoadDirectStriped(d_values + cta_offset, guarded_items, Value(0), values, CTA_THREADS);
+            BlockLoadDirectStriped(d_columns + block_offset, guarded_items, VertexId(0), columns, BLOCK_THREADS);
+            BlockLoadDirectStriped(d_values + block_offset, guarded_items, Value(0), values, BLOCK_THREADS);
         }
         else
         {
             // Unguarded loads
-            CtaLoadDirectStriped(d_columns + cta_offset, columns, CTA_THREADS);
-            CtaLoadDirectStriped(d_values + cta_offset, values, CTA_THREADS);
+            BlockLoadDirectStriped(d_columns + block_offset, columns, BLOCK_THREADS);
+            BlockLoadDirectStriped(d_values + block_offset, values, BLOCK_THREADS);
         }
 
         // Fence to prevent hoisting any dependent code below into the loads above
@@ -652,36 +661,36 @@ struct SpmvCta
             values[ITEM] *= vec_item;
         }
 
-        // Load a CTA-striped tile of A (sparse row-ids, column-ids, and values)
+        // Load a threadblock-striped tile of A (sparse row-ids, column-ids, and values)
         if (guarded_items)
         {
             // This is a partial-tile (e.g., the last tile of input).  Extend the coordinates of the last
             // vertex for out-of-bound items, but zero-valued
-            CtaLoadDirectStriped(d_rows + cta_offset, guarded_items, smem_storage.last_cta_row, rows, CTA_THREADS);
+            BlockLoadDirectStriped(d_rows + block_offset, guarded_items, smem_storage.last_block_row, rows, BLOCK_THREADS);
         }
         else
         {
             // Unguarded loads
-            CtaLoadDirectStriped(d_rows + cta_offset, rows, CTA_THREADS);
+            BlockLoadDirectStriped(d_rows + block_offset, rows, BLOCK_THREADS);
         }
 
-        // Transpose from CTA-striped to CTA-blocked arrangement
-        CtaExchangeValues::StripedToBlocked(smem_storage.exchange_values, values);
+        // Transpose from threadblock-striped to threadblock-blocked arrangement
+        BlockExchangeValues::StripedToBlocked(smem_storage.exchange_values, values);
 
         // Barrier for smem reuse and coherence
         __syncthreads();
 
-        // Transpose from CTA-striped to CTA-blocked arrangement
-        CtaExchangeRows::StripedToBlocked(smem_storage.exchange_rows, rows);
+        // Transpose from threadblock-striped to threadblock-blocked arrangement
+        BlockExchangeRows::StripedToBlocked(smem_storage.exchange_rows, rows);
 
         // Barrier for smem reuse and coherence
         __syncthreads();
 
         // Flag row heads by looking for discontinuities
-        CtaDiscontinuity::Flag(
+        BlockDiscontinuity::Flag(
             smem_storage.discontinuity,
             rows,                           // Original row ids
-            smem_storage.prev_tile_row,     // Last row id from previous CTA
+            smem_storage.prev_tile_row,     // Last row id from previous threadblock
             NewRowOp(),                     // Functor for detecting start of new rows
             head_flags);                    // (Out) Head flags
 
@@ -694,24 +703,24 @@ struct SpmvCta
         }
 
         // Compute the exclusive scan of partial_sums
-        PartialSum local_aggregate;         // CTA-wide aggregate in thread0 (unused)
-        CtaScan::ExclusiveScan(
+        PartialSum block_aggregate;         // Threadblock-wide aggregate in thread0 (unused)
+        BlockScan::ExclusiveScan(
             smem_storage.scan,
             partial_sums,
             partial_sums,                   // (Out)
             smem_storage.identity,
             ReduceByKeyOp(),
-            local_aggregate,                // (Out)
+            block_aggregate,                // (Out)
             carry);                         // (In-out)
 
         // Store the last row in the tile (for computing head flags in the next tile)
-        if (threadIdx.x == CTA_THREADS - 1)
+        if (threadIdx.x == BLOCK_THREADS - 1)
         {
             smem_storage.prev_tile_row = rows[ITEMS_PER_THREAD - 1];
         }
 
         // Pull the last row ID out of smem
-        VertexId last_cta_row = smem_storage.last_cta_row;
+        VertexId last_block_row = smem_storage.last_block_row;
 
         // Scatter an accumulated dot product if it is the head of a valid row
         #pragma unroll
@@ -724,18 +733,18 @@ struct SpmvCta
             }
             else
             {
-                // Otherwise reset the row ID to the last row in the CTA's range
-                partial_sums[ITEM].row = last_cta_row;
+                // Otherwise reset the row ID to the last row in the threadblock's range
+                partial_sums[ITEM].row = last_block_row;
             }
         }
 
         // Find the first-scattered dot product if not yet set
-        if (smem_storage.first_scatter.row == last_cta_row)
+        if (smem_storage.first_scatter.row == last_block_row)
         {
             // Barrier for smem reuse and coherence
             __syncthreads();
 
-            PartialSum candidate = CtaReduce::Reduce(
+            PartialSum candidate = BlockReduce::Reduce(
                 smem_storage.reduce,
                 partial_sums,
                 MinRowOp());
@@ -755,15 +764,15 @@ struct SpmvCta
  * COO SpMV kernel
  */
 template <
-    int             CTA_THREADS,
+    int             BLOCK_THREADS,
     int             ITEMS_PER_THREAD,
-    int             CTA_OCCUPANCY,
+    int             BLOCK_OCCUPANCY,
     typename        VertexId,
     typename        Value>
-__launch_bounds__ (CTA_THREADS, CTA_OCCUPANCY)
+__launch_bounds__ (BLOCK_THREADS, BLOCK_OCCUPANCY)
 __global__ void CooKernel(
-    CtaEvenShare<int>               cta_progress,
-    PartialSum<VertexId, Value>     *d_cta_partials,
+    BlockEvenShare<int>               block_progress,
+    PartialSum<VertexId, Value>     *d_block_partials,
     VertexId                        *d_rows,
     VertexId                        *d_columns,
     Value                           *d_values,
@@ -773,44 +782,44 @@ __global__ void CooKernel(
     // Constants
     enum
     {
-        TILE_SIZE = CTA_THREADS * ITEMS_PER_THREAD
+        TILE_SIZE = BLOCK_THREADS * ITEMS_PER_THREAD
     };
 
-    // SpMV CTA tile-processing abstraction
-    typedef SpmvCta<CTA_THREADS, ITEMS_PER_THREAD, VertexId, Value> SpmvCta;
+    // SpMV threadblock tile-processing abstraction
+    typedef SpmvBlock<BLOCK_THREADS, ITEMS_PER_THREAD, VertexId, Value> SpmvBlock;
 
     // Shared memory
-    __shared__ typename SpmvCta::SmemStorage smem_storage;
+    __shared__ typename SpmvBlock::SmemStorage smem_storage;
 
-    // Initialize CTA even-share to tell us where to start and stop our tile-processing
-    cta_progress.Init();
+    // Initialize threadblock even-share to tell us where to start and stop our tile-processing
+    block_progress.Init();
 
     // Stateful prefix carryover from one tile to the next
-    CtaPrefixOp<PartialSum<VertexId, Value> > carry;
+    BlockPrefixOp<PartialSum<VertexId, Value> > carry;
 
     // Initialize scalar shared memory values
     if (threadIdx.x == 0)
     {
-        VertexId first_cta_row              = d_rows[cta_progress.cta_offset];
-        VertexId last_cta_row               = d_rows[cta_progress.cta_oob - 1];
+        VertexId first_block_row              = d_rows[block_progress.block_offset];
+        VertexId last_block_row               = d_rows[block_progress.block_oob - 1];
 
         // Initialize carry to identity
-        carry.prefix.row                    = first_cta_row;
+        carry.prefix.row                    = first_block_row;
         carry.prefix.partial                = Value(0);
         smem_storage.identity               = carry.prefix;
 
-        smem_storage.first_scatter.row      = last_cta_row;
+        smem_storage.first_scatter.row      = last_block_row;
         smem_storage.first_scatter.partial  = Value(0);
-        smem_storage.last_cta_row           = last_cta_row;
+        smem_storage.last_block_row           = last_block_row;
         smem_storage.prev_tile_row          = (blockIdx.x == 0) ?
-                                                first_cta_row :
-                                                d_rows[cta_progress.cta_offset - 1];
+                                                first_block_row :
+                                                d_rows[block_progress.block_offset - 1];
     }
 
     // Process full tiles
-    while (cta_progress.cta_offset <= cta_progress.cta_oob - TILE_SIZE)
+    while (block_progress.block_offset <= block_progress.block_oob - TILE_SIZE)
     {
-        SpmvCta::ProcessTile(
+        SpmvBlock::ProcessTile(
             smem_storage,
             carry,
             d_rows,
@@ -818,16 +827,16 @@ __global__ void CooKernel(
             d_values,
             d_vector,
             d_result,
-            cta_progress.cta_offset);
+            block_progress.block_offset);
 
-        cta_progress.cta_offset += TILE_SIZE;
+        block_progress.block_offset += TILE_SIZE;
     }
 
     // Process final partial tile (if present)
-    int guarded_items = cta_progress.cta_oob - cta_progress.cta_offset;
+    int guarded_items = block_progress.block_oob - block_progress.block_offset;
     if (guarded_items)
     {
-        SpmvCta::ProcessTile(
+        SpmvBlock::ProcessTile(
             smem_storage,
             carry,
             d_rows,
@@ -835,7 +844,7 @@ __global__ void CooKernel(
             d_values,
             d_vector,
             d_result,
-            cta_progress.cta_offset,
+            block_progress.block_offset,
             guarded_items);
     }
 
@@ -843,33 +852,33 @@ __global__ void CooKernel(
     {
         if (gridDim.x == 1)
         {
-            // Scatter the final aggregate (this kernel contains only 1 CTA)
+            // Scatter the final aggregate (this kernel contains only 1 threadblock)
             d_result[carry.prefix.row] = carry.prefix.partial;
         }
         else
         {
-            // Write out CTA first-item and carry aggregate
+            // Write out threadblock first-item and carry aggregate
 
             // Unweight the first-output if it's the same row as the carry aggregate
             PartialSum<VertexId, Value> first_scatter = smem_storage.first_scatter;
             if (first_scatter.row == carry.prefix.row) first_scatter.partial = Value(0);
 
-            d_cta_partials[blockIdx.x * 2]          = first_scatter;
-            d_cta_partials[(blockIdx.x * 2) + 1]    = carry.prefix;
+            d_block_partials[blockIdx.x * 2]          = first_scatter;
+            d_block_partials[(blockIdx.x * 2) + 1]    = carry.prefix;
         }
     }
 }
 
 
 /**
- * CTA abstraction for processing sparse SPMV tiles
+ * Threadblock abstraction for processing sparse SPMV tiles
  */
 template <
-    int             CTA_THREADS,
+    int             BLOCK_THREADS,
     int             ITEMS_PER_THREAD,
     typename        VertexId,
     typename        Value>
-struct FinalizeSpmvCta
+struct FinalizeSpmvBlock
 {
     //---------------------------------------------------------------------
     // Types and constants
@@ -878,7 +887,7 @@ struct FinalizeSpmvCta
     // Constants
     enum
     {
-        TILE_ITEMS = CTA_THREADS * ITEMS_PER_THREAD,
+        TILE_ITEMS = BLOCK_THREADS * ITEMS_PER_THREAD,
     };
 
     // Head flag type
@@ -887,20 +896,20 @@ struct FinalizeSpmvCta
     // Dot product partial sum type
     typedef PartialSum<VertexId, Value> PartialSum;
 
-    // Parameterized CUB types for use in the current problem context
-    typedef CtaScan<PartialSum, CTA_THREADS>                        CtaScan;
-    typedef CtaDiscontinuity<HeadFlag, CTA_THREADS>                 CtaDiscontinuity;
+    // Parameterized CUB types for use in the current execution context
+    typedef BlockScan<PartialSum, BLOCK_THREADS>                        BlockScan;
+    typedef BlockDiscontinuity<HeadFlag, BLOCK_THREADS>                 BlockDiscontinuity;
 
-    // Shared memory type for this CTA
+    // Shared memory type for this threadblock
     struct SmemStorage
     {
         union
         {
-            typename CtaScan::SmemStorage           scan;               // Smem needed for reduce-value-by-row scan
-            typename CtaDiscontinuity::SmemStorage  discontinuity;      // Smem needed for head-flagging
+            typename BlockScan::SmemStorage           scan;               // Smem needed for reduce-value-by-row scan
+            typename BlockDiscontinuity::SmemStorage  discontinuity;      // Smem needed for head-flagging
         };
 
-        VertexId        last_cta_row;
+        VertexId        last_block_row;
         VertexId        prev_tile_row;
         PartialSum      identity;
     };
@@ -915,31 +924,31 @@ struct FinalizeSpmvCta
     __device__ __forceinline__
     static void ProcessTile(
         SmemStorage                     &smem_storage,
-        CtaPrefixOp<PartialSum>         &carry,
-        PartialSum                      *d_cta_partials,
+        BlockPrefixOp<PartialSum>         &carry,
+        PartialSum                      *d_block_partials,
         Value                           *d_result,
-        int                             cta_offset,
+        int                             block_offset,
         int                             guarded_items = 0)
     {
         VertexId    rows[ITEMS_PER_THREAD];
         PartialSum  partial_sums[ITEMS_PER_THREAD];
         HeadFlag    head_flags[ITEMS_PER_THREAD];
 
-        // Load a CTA-striped tile of A (sparse row-ids, column-ids, and values)
+        // Load a threadblock-striped tile of A (sparse row-ids, column-ids, and values)
         if (guarded_items)
         {
             // This is a partial-tile (e.g., the last tile of input).  Extend the coordinates of the last
             // vertex for out-of-bound items, but zero-valued
             PartialSum default_sum;
-            default_sum.row = smem_storage.last_cta_row;
+            default_sum.row = smem_storage.last_block_row;
             default_sum.partial = Value(0);
 
-            CtaLoadDirect(d_cta_partials + cta_offset, guarded_items, default_sum, partial_sums);
+            BlockLoadDirect(d_block_partials + block_offset, guarded_items, default_sum, partial_sums);
         }
         else
         {
             // Unguarded loads
-            CtaLoadDirect(d_cta_partials + cta_offset, partial_sums);
+            BlockLoadDirect(d_block_partials + block_offset, partial_sums);
         }
 
         // Fence to prevent hoisting any dependent code below into the loads above
@@ -953,10 +962,10 @@ struct FinalizeSpmvCta
         }
 
         // Flag row heads by looking for discontinuities
-        CtaDiscontinuity::Flag(
+        BlockDiscontinuity::Flag(
             smem_storage.discontinuity,
             rows,                           // Original row ids
-            smem_storage.prev_tile_row,     // Last row id from previous CTA
+            smem_storage.prev_tile_row,     // Last row id from previous threadblock
             NewRowOp(),                     // Functor for detecting start of new rows
             head_flags);                    // (Out) Head flags
 
@@ -964,20 +973,20 @@ struct FinalizeSpmvCta
         __syncthreads();
 
         // Store the last row in the tile (for computing head flags in the next tile)
-        if (threadIdx.x == CTA_THREADS - 1)
+        if (threadIdx.x == BLOCK_THREADS - 1)
         {
             smem_storage.prev_tile_row = rows[ITEMS_PER_THREAD - 1];
         }
 
         // Compute the exclusive scan of partial_sums
-        PartialSum local_aggregate;         // CTA-wide aggregate in thread0 (unused)
-        CtaScan::ExclusiveScan(
+        PartialSum block_aggregate;         // Threadblock-wide aggregate in thread0 (unused)
+        BlockScan::ExclusiveScan(
             smem_storage.scan,
             partial_sums,
             partial_sums,                   // (Out)
             smem_storage.identity,
             ReduceByKeyOp(),
-            local_aggregate,                // (Out)
+            block_aggregate,                // (Out)
             carry);                         // (In-out)
 
         // Scatter an accumulated dot product if it is the head of a valid row
@@ -999,80 +1008,80 @@ struct FinalizeSpmvCta
  * COO Finalize kernel.
  */
 template <
-    int             CTA_THREADS,
+    int             BLOCK_THREADS,
     int             ITEMS_PER_THREAD,
     typename        VertexId,
     typename        Value>
-__launch_bounds__ (CTA_THREADS,  1)
+__launch_bounds__ (BLOCK_THREADS,  1)
 __global__ void CooFinalizeKernel(
-    PartialSum<VertexId, Value>     *d_cta_partials,
+    PartialSum<VertexId, Value>     *d_block_partials,
     int                             finalize_partials,
     Value                           *d_result)
 {
     // Constants
     enum
     {
-        TILE_SIZE = CTA_THREADS * ITEMS_PER_THREAD
+        TILE_SIZE = BLOCK_THREADS * ITEMS_PER_THREAD
     };
 
-    // SpMV CTA tile-processing abstraction
-    typedef FinalizeSpmvCta<CTA_THREADS, ITEMS_PER_THREAD, VertexId, Value> FinalizeSpmvCta;
+    // SpMV threadblock tile-processing abstraction
+    typedef FinalizeSpmvBlock<BLOCK_THREADS, ITEMS_PER_THREAD, VertexId, Value> FinalizeSpmvBlock;
 
     // Shared memory
-    __shared__ typename FinalizeSpmvCta::SmemStorage smem_storage;
+    __shared__ typename FinalizeSpmvBlock::SmemStorage smem_storage;
 
     // Stateful prefix carryover from one tile to the next
-    CtaPrefixOp<PartialSum<VertexId, Value> > carry;
+    BlockPrefixOp<PartialSum<VertexId, Value> > carry;
 
     // Initialize scalar shared memory values
     if (threadIdx.x == 0)
     {
-        VertexId first_cta_row              = d_cta_partials[0].row;
-        VertexId last_cta_row               = d_cta_partials[finalize_partials - 1].row;
+        VertexId first_block_row              = d_block_partials[0].row;
+        VertexId last_block_row               = d_block_partials[finalize_partials - 1].row;
 
         // Initialize carry to identity
-        carry.prefix.row                    = first_cta_row;
+        carry.prefix.row                    = first_block_row;
         carry.prefix.partial                = Value(0);
         smem_storage.identity               = carry.prefix;
 
-        smem_storage.last_cta_row           = last_cta_row;
-        smem_storage.prev_tile_row          = first_cta_row;
+        smem_storage.last_block_row           = last_block_row;
+        smem_storage.prev_tile_row          = first_block_row;
     }
 
     // Barrier for smem coherence
     __syncthreads();
 
     // Process full tiles
-    int cta_offset = 0;
-    while (cta_offset <= finalize_partials - TILE_SIZE)
+    int block_offset = 0;
+    while (block_offset <= finalize_partials - TILE_SIZE)
     {
-        FinalizeSpmvCta::ProcessTile(
+        FinalizeSpmvBlock::ProcessTile(
             smem_storage,
             carry,
-            d_cta_partials,
+            d_block_partials,
             d_result,
-            cta_offset);
+            block_offset);
 
         // Barrier for smem reuse and coherence
         __syncthreads();
 
-        cta_offset += TILE_SIZE;
+        block_offset += TILE_SIZE;
     }
 
     // Process final partial tile (if present)
-    int guarded_items = finalize_partials - cta_offset;
+    int guarded_items = finalize_partials - block_offset;
     if (guarded_items)
     {
-        FinalizeSpmvCta::ProcessTile(
+        FinalizeSpmvBlock::ProcessTile(
             smem_storage,
             carry,
-            d_cta_partials,
+            d_block_partials,
             d_result,
-            cta_offset,
+            block_offset,
             guarded_items);
     }
 
-    // Scatter the final aggregate (this kernel contains only 1 CTA)
+    // Scatter the final aggregate (this kernel contains only 1 threadblock)
     if (threadIdx.x == 0)
     {
         d_result[carry.prefix.row] = carry.prefix.partial;
@@ -1159,10 +1168,10 @@ int CompareResults(double* computed, double* reference, SizeT len)
  * Simple test of device
  */
 template <
-    int                         COO_CTA_THREADS,
+    int                         COO_BLOCK_THREADS,
     int                         COO_ITEMS_PER_THREAD,
-    int                         COO_CTA_OCCUPANCY,
-    int                         FINALIZE_CTA_THREADS,
+    int                         COO_BLOCK_OCCUPANCY,
+    int                         FINALIZE_BLOCK_THREADS,
     int                         FINALIZE_ITEMS_PER_THREAD,
     typename                    VertexId,
     typename                    Value>
@@ -1173,7 +1182,7 @@ void TestDevice(
 {
     typedef PartialSum<VertexId, Value> PartialSum;
 
-    const int COO_TILE_SIZE = COO_CTA_THREADS * COO_ITEMS_PER_THREAD;
+    const int COO_TILE_SIZE = COO_BLOCK_THREADS * COO_ITEMS_PER_THREAD;
 
     if (g_iterations <= 0) return;
 
@@ -1184,7 +1193,7 @@ void TestDevice(
     Value                           *d_values;           // SOA graph values
     Value                           *d_vector;           // Vector multiplicand
     Value                           *d_result;           // Output row
-    PartialSum                      *d_cta_partials;     // Temporary storage for communicating dot product partials between CTAs
+    PartialSum                      *d_block_partials;     // Temporary storage for communicating dot product partials between threadblocks
 
     // Create SOA version of coo_graph on host
     int                             num_edges       = coo_graph.coo_tuples.size();
@@ -1206,12 +1215,12 @@ void TestDevice(
     KernelProps coo_kernel_props;
     KernelProps finalize_kernel_props;
     CubDebugExit(coo_kernel_props.Init(
-        CooKernel<COO_CTA_THREADS, COO_ITEMS_PER_THREAD, COO_CTA_OCCUPANCY, VertexId, Value>,
-        COO_CTA_THREADS,
+        CooKernel<COO_BLOCK_THREADS, COO_ITEMS_PER_THREAD, COO_BLOCK_OCCUPANCY, VertexId, Value>,
+        COO_BLOCK_THREADS,
         cuda_props));
     CubDebugExit(finalize_kernel_props.Init(
-        CooFinalizeKernel<FINALIZE_CTA_THREADS, FINALIZE_ITEMS_PER_THREAD, VertexId, Value>,
-        FINALIZE_CTA_THREADS,
+        CooFinalizeKernel<FINALIZE_BLOCK_THREADS, FINALIZE_ITEMS_PER_THREAD, VertexId, Value>,
+        FINALIZE_BLOCK_THREADS,
         cuda_props));
 
     // Determine launch configuration from kernel properties
@@ -1224,7 +1233,7 @@ void TestDevice(
     CubDebugExit(DeviceAllocate((void**)&d_values,          sizeof(Value) * num_edges));
     CubDebugExit(DeviceAllocate((void**)&d_vector,          sizeof(Value) * coo_graph.col_dim));
     CubDebugExit(DeviceAllocate((void**)&d_result,          sizeof(Value) * coo_graph.row_dim));
-    CubDebugExit(DeviceAllocate((void**)&d_cta_partials,    sizeof(PartialSum) * finalize_partials));
+    CubDebugExit(DeviceAllocate((void**)&d_block_partials,    sizeof(PartialSum) * finalize_partials));
 
     // Copy host arrays to device
     CubDebugExit(cudaMemcpy(d_rows,     h_rows,     sizeof(VertexId) * num_edges, cudaMemcpyHostToDevice));
@@ -1237,15 +1246,15 @@ void TestDevice(
     TexVector<uint2>::BindTexture((uint2 *) d_vector, coo_graph.col_dim);
 
     // Construct an even-share work distribution
-    CtaEvenShare<int> cta_progress(num_edges, coo_grid_size, COO_TILE_SIZE);
+    BlockEvenShare<int> block_progress(num_edges, coo_grid_size, COO_TILE_SIZE);
 
     // Print debug info
     printf("CooKernel<%d, %d><<<%d, %d>>>(...), Max SM occupancy: %d\n",
-        COO_CTA_THREADS, COO_ITEMS_PER_THREAD, coo_grid_size, COO_CTA_THREADS, coo_kernel_props.max_cta_occupancy);
+        COO_BLOCK_THREADS, COO_ITEMS_PER_THREAD, coo_grid_size, COO_BLOCK_THREADS, coo_kernel_props.max_block_occupancy);
     if (coo_grid_size > 1)
     {
         printf("CooFinalizeKernel<<<1, %d>>>(...), Max SM occupancy: %d\n",
-            FINALIZE_CTA_THREADS, finalize_kernel_props.max_cta_occupancy);
+            FINALIZE_BLOCK_THREADS, finalize_kernel_props.max_block_occupancy);
     }
     fflush(stdout);
 
@@ -1260,9 +1269,9 @@ void TestDevice(
         CubDebugExit(cudaMemset(d_result, 0, coo_graph.row_dim * sizeof(Value)));
 
         // Run the COO kernel
-        CooKernel<COO_CTA_THREADS, COO_ITEMS_PER_THREAD, COO_CTA_OCCUPANCY><<<coo_grid_size, COO_CTA_THREADS>>>(
-            cta_progress,
-            d_cta_partials,
+        CooKernel<COO_BLOCK_THREADS, COO_ITEMS_PER_THREAD, COO_BLOCK_OCCUPANCY><<<coo_grid_size, COO_BLOCK_THREADS>>>(
+            block_progress,
+            d_block_partials,
             d_rows,
             d_columns,
             d_values,
@@ -1272,8 +1281,8 @@ void TestDevice(
         if (coo_grid_size > 1)
         {
             // Run the COO finalize kernel
-            CooFinalizeKernel<FINALIZE_CTA_THREADS, FINALIZE_ITEMS_PER_THREAD><<<1, FINALIZE_CTA_THREADS>>>(
-                d_cta_partials,
+            CooFinalizeKernel<FINALIZE_BLOCK_THREADS, FINALIZE_ITEMS_PER_THREAD><<<1, FINALIZE_BLOCK_THREADS>>>(
+                d_block_partials,
                 finalize_partials,
                 d_result);
         }
@@ -1301,7 +1310,7 @@ void TestDevice(
     // Cleanup
 //    TexVector<Value>::UnbindTexture();
     TexVector<uint2>::UnbindTexture();
-    CubDebugExit(DeviceFree(d_cta_partials));
+    CubDebugExit(DeviceFree(d_block_partials));
     CubDebugExit(DeviceFree(d_rows));
     CubDebugExit(DeviceFree(d_columns));
     CubDebugExit(DeviceFree(d_values));

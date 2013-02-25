@@ -41,19 +41,19 @@ namespace radix_sort {
  */
 template <
     int                     _RADIX_BITS,        // The number of radix bits, i.e., log2(bins)
-    int                     _CTA_THREADS,       // The number of threads per CTA
+    int                     _BLOCK_THREADS,       // The number of threads per CTA
     int                     _THREAD_ITEMS,      // The number of consecutive items to load per thread per tile
     cub::PtxLoadModifier    _LOAD_MODIFIER,     // Load cache-modifier
     cub::PtxStoreModifier   _STORE_MODIFIER,    // Store cache-modifier
     cudaSharedMemConfig     _SMEM_CONFIG>       // Shared memory bank size
-struct CtaSingleTilePolicy
+struct BlockSingleTilePolicy
 {
     enum
     {
         RADIX_BITS      = _RADIX_BITS,
-        CTA_THREADS     = _CTA_THREADS,
+        BLOCK_THREADS     = _BLOCK_THREADS,
         THREAD_ITEMS    = _THREAD_ITEMS,
-        TILE_ITEMS      = CTA_THREADS * THREAD_ITEMS,
+        TILE_ITEMS      = BLOCK_THREADS * THREAD_ITEMS,
     };
 
     static const cub::PtxLoadModifier   LOAD_MODIFIER       = _LOAD_MODIFIER;
@@ -71,10 +71,10 @@ struct CtaSingleTilePolicy
  * CTA-wide abstraction for sorting a single tile of input
  */
 template <
-    typename CtaSingleTilePolicy,
+    typename BlockSingleTilePolicy,
     typename KeyType,
     typename ValueType>
-class CtaSingleTile
+class BlockSingleTile
 {
 private:
 
@@ -90,10 +90,10 @@ private:
 
     enum
     {
-        CTA_THREADS         = CtaSingleTilePolicy::CTA_THREADS,
-        RADIX_BITS          = CtaSingleTilePolicy::RADIX_BITS,
-        KEYS_PER_THREAD     = CtaSingleTilePolicy::THREAD_ITEMS,
-        TILE_ITEMS          = CtaSingleTilePolicy::TILE_ITEMS,
+        BLOCK_THREADS         = BlockSingleTilePolicy::BLOCK_THREADS,
+        RADIX_BITS          = BlockSingleTilePolicy::RADIX_BITS,
+        KEYS_PER_THREAD     = BlockSingleTilePolicy::THREAD_ITEMS,
+        TILE_ITEMS          = BlockSingleTilePolicy::TILE_ITEMS,
     };
 
 
@@ -102,7 +102,7 @@ public:
     /**
      * Shared memory storage layout
      */
-    typedef typename CtaRadixSortT::SmemStorage SmemStorage;
+    typedef typename BlockRadixSortT::SmemStorage SmemStorage;
 
 
     //---------------------------------------------------------------------
@@ -128,7 +128,7 @@ public:
         UnsignedBits keys[KEYS_PER_THREAD];
 
         // Load striped
-        cub::CtaLoadDirectStriped(d_bits_in, num_elements, MAX_KEY, keys, CTA_THREADS);
+        cub::BlockLoadDirectStriped(d_bits_in, num_elements, MAX_KEY, keys, BLOCK_THREADS);
 
         // Twiddle key bits if necessary
         #pragma unroll
@@ -138,7 +138,7 @@ public:
         }
 
         // Sort
-        CtaRadixSortT::SortStriped(smem_storage, keys, begin_bit, end_bit);
+        BlockRadixSortT::SortStriped(smem_storage, keys, begin_bit, end_bit);
 
         // TODO: Twiddle key bits if necessary
         #pragma unroll
@@ -148,7 +148,7 @@ public:
         }
 
         // Store keys
-        cub::CtaStoreDirectStriped(d_keys_out, num_elements, keys, CTA_THREADS);
+        cub::BlockStoreDirectStriped(d_keys_out, num_elements, keys, BLOCK_THREADS);
         StoreTile(
             keys,
             reinterpret_cast<UnsignedBits*>(d_bits_in),
@@ -196,7 +196,7 @@ public:
         }
 
         // Sort
-        CtaRadixSortT::SortThreadToCtaStride(
+        BlockRadixSortT::SortThreadToBlockStride(
             smem_storage.sorting_storage,
             keys,
             current_bit,

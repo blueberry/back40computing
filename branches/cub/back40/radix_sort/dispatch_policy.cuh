@@ -34,16 +34,16 @@ namespace radix_sort {
  * Dispatch policy type
  */
 template <
-    int                 _UPSWEEP_MIN_CTA_OCCUPANCY,
-    int                 _DOWNSWEEP_MIN_CTA_OCCUPANCY,
-    int                 _HYBRID_MIN_CTA_OCCUPANCY>
+    int                 _UPSWEEP_MIN_BLOCK_OCCUPANCY,
+    int                 _DOWNSWEEP_MIN_BLOCK_OCCUPANCY,
+    int                 _HYBRID_MIN_BLOCK_OCCUPANCY>
 struct DispatchPolicy
 {
     enum
     {
-        UPSWEEP_MIN_CTA_OCCUPANCY           = _UPSWEEP_MIN_CTA_OCCUPANCY,
-        DOWNSWEEP_MIN_CTA_OCCUPANCY         = _DOWNSWEEP_MIN_CTA_OCCUPANCY,
-        HYBRID_MIN_CTA_OCCUPANCY            = _HYBRID_MIN_CTA_OCCUPANCY,
+        UPSWEEP_MIN_BLOCK_OCCUPANCY           = _UPSWEEP_MIN_BLOCK_OCCUPANCY,
+        DOWNSWEEP_MIN_BLOCK_OCCUPANCY         = _DOWNSWEEP_MIN_BLOCK_OCCUPANCY,
+        HYBRID_MIN_BLOCK_OCCUPANCY            = _HYBRID_MIN_BLOCK_OCCUPANCY,
     };
 
 };

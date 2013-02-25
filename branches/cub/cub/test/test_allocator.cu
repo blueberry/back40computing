@@ -1,19 +1,28 @@
 /******************************************************************************
+ * Copyright (c) 2011, Duane Merrill.  All rights reserved.
+ * Copyright (c) 2011-2013, NVIDIA CORPORATION.  All rights reserved.
  *
- * Copyright (c) 2010-2012, Duane Merrill.  All rights reserved.
- * Copyright (c) 2011-2012, NVIDIA CORPORATION.  All rights reserved.
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *     * Neither the name of the NVIDIA CORPORATION nor the
+ *       names of its contributors may be used to endorse or promote products
+ *       derived from this software without specific prior written permission.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  ******************************************************************************/
 
@@ -48,10 +57,10 @@ int main(int argc, char** argv)
     // Print usage
     if (args.CheckCmdLineFlag("help"))
     {
-    	printf("%s "
-    		"[--device=<device-id>]"
-    		"\n", argv[0]);
-    	exit(0);
+        printf("%s "
+            "[--device=<device-id>]"
+            "\n", argv[0]);
+        exit(0);
     }
 
     // Initialize device
@@ -59,16 +68,16 @@ int main(int argc, char** argv)
 
     // Get number of GPUs and current GPU
     int num_gpus, initial_gpu;
-	if (CubDebug(cudaGetDeviceCount(&num_gpus))) exit(1);
-	if (CubDebug(cudaGetDevice(&initial_gpu))) exit(1);
+    if (CubDebug(cudaGetDeviceCount(&num_gpus))) exit(1);
+    if (CubDebug(cudaGetDevice(&initial_gpu))) exit(1);
 
-	// Create default allocator (caches up to 6MB in device allocations per GPU)
+    // Create default allocator (caches up to 6MB in device allocations per GPU)
     CachingDeviceAllocator allocator;
     allocator.debug = true;
 
-	printf("Running single-gpu tests...\n"); fflush(stdout);
+    printf("Running single-gpu tests...\n"); fflush(stdout);
 
-	//
+    //
     // Test1
     //
 
@@ -207,31 +216,31 @@ int main(int argc, char** argv)
 
     if (num_gpus > 1)
     {
-    	printf("Running multi-gpu tests...\n"); fflush(stdout);
+        printf("Running multi-gpu tests...\n"); fflush(stdout);
 
         //
         // Test9
         //
 
-    	// Allocate 768 bytes on the next gpu
-		int next_gpu = (initial_gpu + 1) % num_gpus;
-		char *d_768B_2;
-		allocator.DeviceAllocate((void **) &d_768B_2, 768, next_gpu);
+        // Allocate 768 bytes on the next gpu
+        int next_gpu = (initial_gpu + 1) % num_gpus;
+        char *d_768B_2;
+        allocator.DeviceAllocate((void **) &d_768B_2, 768, next_gpu);
 
-		// DeviceFree d_768B on the next gpu
-		allocator.DeviceFree(d_768B_2, next_gpu);
+        // DeviceFree d_768B on the next gpu
+        allocator.DeviceFree(d_768B_2, next_gpu);
 
-		// Check that that we have 4096 free bytes cached on the initial gpu
-		AssertEquals(allocator.cached_bytes[initial_gpu], rounded_bytes);
+        // Check that that we have 4096 free bytes cached on the initial gpu
+        AssertEquals(allocator.cached_bytes[initial_gpu], rounded_bytes);
 
-		// Check that that we have 4096 free bytes cached on the second gpu
-		AssertEquals(allocator.cached_bytes[next_gpu], rounded_bytes);
+        // Check that that we have 4096 free bytes cached on the second gpu
+        AssertEquals(allocator.cached_bytes[next_gpu], rounded_bytes);
 
-	    // Check that that we have 2 cached blocks across all GPUs
-	    AssertEquals(allocator.cached_blocks.size(), 2);
+        // Check that that we have 2 cached blocks across all GPUs
+        AssertEquals(allocator.cached_blocks.size(), 2);
 
-	    // Check that that still we have 0 live block across all GPUs
-	    AssertEquals(allocator.live_blocks.size(), 0);
+        // Check that that still we have 0 live block across all GPUs
+        AssertEquals(allocator.live_blocks.size(), 0);
     }
 
     printf("Success\n");

@@ -195,7 +195,7 @@ TAB_SIZE               = 4
 # will result in a user-defined paragraph with heading "Side Effects:".
 # You can put \n's in the value part of an alias to insert newlines.
 
-ALIASES                = "smemreuse=A subsequent <tt>__syncthreads()</tt> CTA barrier is required if the supplied \p smem_storage is to be reused/repurposed by the CTA."
+ALIASES                = "smemreuse=A subsequent <tt>__syncthreads()</tt> threadblock barrier should be invoked after calling this method if the supplied \p smem_storage is to be reused/repurposed by the threadblock."
 
 # This tag can be used to specify a number of word-keyword mappings (TCL only).
 # A mapping has the form "name=value". For example adding
@@ -661,7 +661,7 @@ WARN_LOGFILE           =
 # directories like "/usr/src/myproject". Separate the files or directories
 # with spaces.
 
-INPUT                  = ../cub.cuh ../debug.cuh ../warp/warp_scan.cuh ../cta/cta_reduce.cuh ../cta/cta_scan.cuh ../cta/cta_radix_sort.cuh ../cta/cta_load.cuh ../cta/cta_store.cuh ../cta/cta_exchange.cuh ../cta/cta_discontinuity.cuh ../operators.cuh  
+INPUT                  = ../cub.cuh ../debug.cuh ../warp/warp_scan.cuh ../block/block_reduce.cuh ../block/block_scan.cuh ../block/block_radix_sort.cuh ../block/block_load.cuh ../block/block_store.cuh ../block/block_exchange.cuh ../block/block_discontinuity.cuh ../operators.cuh  
 
 # This tag can be used to specify the character encoding of the source files
 # that doxygen parses. Internally doxygen uses the UTF-8 encoding, which is

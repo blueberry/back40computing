@@ -1,24 +1,33 @@
 /******************************************************************************
+ * Copyright (c) 2011, Duane Merrill.  All rights reserved.
+ * Copyright (c) 2011-2013, NVIDIA CORPORATION.  All rights reserved.
  *
- * Copyright (c) 2010-2012, Duane Merrill.  All rights reserved.
- * Copyright (c) 2011-2012, NVIDIA CORPORATION.  All rights reserved.
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *     * Neither the name of the NVIDIA CORPORATION nor the
+ *       names of its contributors may be used to endorse or promote products
+ *       derived from this software without specific prior written permission.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  ******************************************************************************/
 
 /******************************************************************************
- * Test of CtaRadixSort utilities
+ * Test of BlockRadixSort utilities
  ******************************************************************************/
 
 // Ensure printing of CUDA runtime errors to console
@@ -46,16 +55,16 @@ bool g_verbose = false;
 
 
 /**
- * CtaRadixSort kernel
+ * BlockRadixSort kernel
  */
 template <
-    int                     CTA_THREADS,
+    int                     BLOCK_THREADS,
     int                     ITEMS_PER_THREAD,
     int                     RADIX_BITS,
     cudaSharedMemConfig     SMEM_CONFIG,
     typename                KeyType,
     typename                ValueType>
-__launch_bounds__ (CTA_THREADS, 1)
+__launch_bounds__ (BLOCK_THREADS, 1)
 __global__ void Kernel(
     KeyType             *d_keys,
     ValueType           *d_values,
@@ -64,21 +73,21 @@ __global__ void Kernel(
 {
     enum
     {
-        TILE_SIZE = CTA_THREADS * ITEMS_PER_THREAD,
+        TILE_SIZE = BLOCK_THREADS * ITEMS_PER_THREAD,
         KEYS_ONLY = Equals<ValueType, NullType>::VALUE,
     };
 
-    // CTA load/store abstraction types
-    typedef CtaRadixSort<
+    // Threadblock load/store abstraction types
+    typedef BlockRadixSort<
         KeyType,
-        CTA_THREADS,
+        BLOCK_THREADS,
         ITEMS_PER_THREAD,
         ValueType,
         RADIX_BITS,
-        SMEM_CONFIG> CtaRadixSort;
+        SMEM_CONFIG> BlockRadixSort;
 
     // Shared memory
-    __shared__ typename CtaRadixSort::SmemStorage smem_storage;
+    __shared__ typename BlockRadixSort::SmemStorage smem_storage;
 
     // Keys per thread
     KeyType keys[ITEMS_PER_THREAD];
@@ -86,24 +95,24 @@ __global__ void Kernel(
     if (KEYS_ONLY)
     {
         // Test keys-only sorting (in striped arrangement)
-        CtaLoadDirectStriped(d_keys, keys, CTA_THREADS);
+        BlockLoadDirectStriped(d_keys, keys, BLOCK_THREADS);
 
-        CtaRadixSort::SortStriped(smem_storage, keys, begin_bit, end_bit);
+        BlockRadixSort::SortStriped(smem_storage, keys, begin_bit, end_bit);
 
-        CtaStoreDirectStriped(d_keys, keys, CTA_THREADS);
+        BlockStoreDirectStriped(d_keys, keys, BLOCK_THREADS);
     }
     else
     {
         // Test keys-value sorting (in striped arrangement)
         ValueType values[ITEMS_PER_THREAD];
 
-        CtaLoadDirectStriped(d_keys, keys, CTA_THREADS);
-        CtaLoadDirectStriped(d_values, values, CTA_THREADS);
+        BlockLoadDirectStriped(d_keys, keys, BLOCK_THREADS);
+        BlockLoadDirectStriped(d_values, values, BLOCK_THREADS);
 
-        CtaRadixSort::SortStriped(smem_storage, keys, values, begin_bit, end_bit);
+        BlockRadixSort::SortStriped(smem_storage, keys, values, begin_bit, end_bit);
 
-        CtaStoreDirectStriped(d_keys, keys, CTA_THREADS);
-        CtaStoreDirectStriped(d_values, values, CTA_THREADS);
+        BlockStoreDirectStriped(d_keys, keys, BLOCK_THREADS);
+        BlockStoreDirectStriped(d_values, values, BLOCK_THREADS);
     }
 }
 
@@ -113,10 +122,10 @@ __global__ void Kernel(
 //---------------------------------------------------------------------
 
 /**
- * Drive CtaRadixSort kernel
+ * Drive BlockRadixSort kernel
  */
 template <
-    int                     CTA_THREADS,
+    int                     BLOCK_THREADS,
     int                     ITEMS_PER_THREAD,
     int                     RADIX_BITS,
     cudaSharedMemConfig     SMEM_CONFIG,
@@ -130,7 +139,7 @@ void TestDriver(
 {
     enum
     {
-        TILE_SIZE = CTA_THREADS * ITEMS_PER_THREAD,
+        TILE_SIZE = BLOCK_THREADS * ITEMS_PER_THREAD,
     };
 
     // Allocate host arrays
@@ -155,7 +164,7 @@ void TestDriver(
     CubDebugExit(cudaMemcpy(d_values, h_values, sizeof(ValueType) * TILE_SIZE, cudaMemcpyHostToDevice));
 
     printf("%s "
-        "CTA_THREADS(%d) "
+        "BLOCK_THREADS(%d) "
         "ITEMS_PER_THREAD(%d) "
         "RADIX_BITS(%d) "
         "SMEM_CONFIG(%d) "
@@ -165,7 +174,7 @@ void TestDriver(
         "begin_bit(%d) "
         "end_bit(%d)\n",
             ((keys_only) ? "keys-only" : "key-value"),
-            CTA_THREADS,
+            BLOCK_THREADS,
             ITEMS_PER_THREAD,
             RADIX_BITS,
             SMEM_CONFIG,
@@ -186,13 +195,13 @@ void TestDriver(
     if (keys_only)
     {
         // Keys-only
-        Kernel<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG><<<1, CTA_THREADS>>>(
+        Kernel<BLOCK_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG><<<1, BLOCK_THREADS>>>(
             d_keys, (NullType*) d_values, begin_bit, end_bit);
     }
     else
     {
         // Key-value pairs
-        Kernel<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG><<<1, CTA_THREADS>>>(
+        Kernel<BLOCK_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG><<<1, BLOCK_THREADS>>>(
             d_keys, d_values, begin_bit, end_bit);
     }
 
@@ -244,13 +253,13 @@ void TestDriver(
  * Test driver (valid tile size < 48KB)
  */
 template <
-    int                     CTA_THREADS,
+    int                     BLOCK_THREADS,
     int                     ITEMS_PER_THREAD,
     int                     RADIX_BITS,
     cudaSharedMemConfig     SMEM_CONFIG,
     typename                KeyType,
     typename                ValueType,
-    bool                    VALID = (CUB_MAX(sizeof(KeyType), sizeof(ValueType)) * CTA_THREADS * ITEMS_PER_THREAD < (1024 * 48))>
+    bool                    VALID = (CUB_MAX(sizeof(KeyType), sizeof(ValueType)) * BLOCK_THREADS * ITEMS_PER_THREAD < (1024 * 48))>
 struct Valid
 {
     static void Test()
@@ -273,7 +282,7 @@ struct Valid
                             int end_bit = begin_bit + (passes * RADIX_BITS) + relative_end;
                             if ((end_bit > begin_bit) && (end_bit <= sizeof(KeyType) * 8))
                             {
-                                TestDriver<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, KeyType, ValueType>(
+                                TestDriver<BLOCK_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, KeyType, ValueType>(
                                     (bool) keys_only,
                                     entropy_reduction,
                                     begin_bit,
@@ -291,13 +300,13 @@ struct Valid
  * Test driver (invalid tile size)
  */
 template <
-    int                     CTA_THREADS,
+    int                     BLOCK_THREADS,
     int                     ITEMS_PER_THREAD,
     int                     RADIX_BITS,
     cudaSharedMemConfig     SMEM_CONFIG,
     typename                KeyType,
     typename                ValueType>
-struct Valid<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, KeyType, ValueType, false>
+struct Valid<BLOCK_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, KeyType, ValueType, false>
 {
     // Do nothing
     static void Test() {}
@@ -308,17 +317,17 @@ struct Valid<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, KeyType, Va
  * Test value type
  */
 template <
-    int CTA_THREADS,
+    int BLOCK_THREADS,
     int ITEMS_PER_THREAD,
     int RADIX_BITS,
     cudaSharedMemConfig SMEM_CONFIG,
     typename KeyType>
 void Test()
 {
-    Valid<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, KeyType, unsigned char>::Test();
-    Valid<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, KeyType, unsigned short>::Test();
-    Valid<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, KeyType, unsigned int>::Test();
-    Valid<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, KeyType, unsigned long long>::Test();
+    Valid<BLOCK_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, KeyType, unsigned char>::Test();
+    Valid<BLOCK_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, KeyType, unsigned short>::Test();
+    Valid<BLOCK_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, KeyType, unsigned int>::Test();
+    Valid<BLOCK_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, KeyType, unsigned long long>::Test();
 }
 
 
@@ -326,16 +335,16 @@ void Test()
  * Test key type
  */
 template <
-    int CTA_THREADS,
+    int BLOCK_THREADS,
     int ITEMS_PER_THREAD,
     int RADIX_BITS,
     cudaSharedMemConfig SMEM_CONFIG>
 void Test()
 {
-    Test<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, unsigned char>();
-    Test<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, unsigned short>();
-    Test<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, unsigned int>();
-    Test<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, unsigned long long>();
+    Test<BLOCK_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, unsigned char>();
+    Test<BLOCK_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, unsigned short>();
+    Test<BLOCK_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, unsigned int>();
+    Test<BLOCK_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, unsigned long long>();
 }
 
 
@@ -343,13 +352,13 @@ void Test()
  * Test smem config
  */
 template <
-    int CTA_THREADS,
+    int BLOCK_THREADS,
     int ITEMS_PER_THREAD,
     int RADIX_BITS>
 void Test()
 {
-    Test<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, cudaSharedMemBankSizeFourByte>();
-    Test<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, cudaSharedMemBankSizeEightByte>();
+    Test<BLOCK_THREADS, ITEMS_PER_THREAD, RADIX_BITS, cudaSharedMemBankSizeFourByte>();
+    Test<BLOCK_THREADS, ITEMS_PER_THREAD, RADIX_BITS, cudaSharedMemBankSizeEightByte>();
 }
 
 
@@ -357,27 +366,27 @@ void Test()
  * Test radix bits
  */
 template <
-    int CTA_THREADS,
+    int BLOCK_THREADS,
     int ITEMS_PER_THREAD>
 void Test()
 {
-    Test<CTA_THREADS, ITEMS_PER_THREAD, 1>();
-    Test<CTA_THREADS, ITEMS_PER_THREAD, 3>();
-    Test<CTA_THREADS, ITEMS_PER_THREAD, 4>();
-    Test<CTA_THREADS, ITEMS_PER_THREAD, 5>();
+    Test<BLOCK_THREADS, ITEMS_PER_THREAD, 1>();
+    Test<BLOCK_THREADS, ITEMS_PER_THREAD, 3>();
+    Test<BLOCK_THREADS, ITEMS_PER_THREAD, 4>();
+    Test<BLOCK_THREADS, ITEMS_PER_THREAD, 5>();
 }
 
 
 /**
  * Test items per thread
  */
-template <int CTA_THREADS>
+template <int BLOCK_THREADS>
 void Test()
 {
-    Test<CTA_THREADS, 1>();
-    Test<CTA_THREADS, 8>();
-    Test<CTA_THREADS, 15>();
-    Test<CTA_THREADS, 19>();
+    Test<BLOCK_THREADS, 1>();
+    Test<BLOCK_THREADS, 8>();
+    Test<BLOCK_THREADS, 15>();
+    Test<BLOCK_THREADS, 19>();
 }
 
 /**

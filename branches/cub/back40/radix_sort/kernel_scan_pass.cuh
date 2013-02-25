@@ -37,10 +37,10 @@ namespace radix_sort {
  * Kernel entry point
  */
 template <
-    typename CtaScanPassPolicy,
+    typename BlockScanPassPolicy,
     typename T,
     typename SizeT>
-__launch_bounds__ (CtaScanPassPolicy::CTA_THREADS, 1)
+__launch_bounds__ (BlockScanPassPolicy::BLOCK_THREADS, 1)
 __global__
 void ScanKernel(
     T            *d_in,
@@ -48,15 +48,15 @@ void ScanKernel(
     SizeT         spine_elements)
 {
     // CTA abstraction type
-    typedef CtaScanPass<CtaScanPassPolicy, T> CtaScanPassT;
+    typedef BlockScanPass<BlockScanPassPolicy, T> BlockScanPassT;
 
     // Shared data structures
-    __shared__ typename CtaScanPassT::SmemStorage smem_storage;
+    __shared__ typename BlockScanPassT::SmemStorage smem_storage;
 
     // Only CTA-0 needs to run
     if (blockIdx.x > 0) return;
 
-    CtaScanPassT::ScanPass(
+    BlockScanPassT::ScanPass(
         smem_storage,
         d_in,
         d_out,
@@ -83,19 +83,19 @@ struct SpineKernelProps : cub::KernelProps
      * Initializer
      */
     template <
-        typename CtaScanPassPolicy,
-        typename OpaqueCtaScanPassPolicy>
+        typename BlockScanPassPolicy,
+        typename OpaqueBlockScanPassPolicy>
     cudaError_t Init(const cub::CudaProps &cuda_props)    // CUDA properties for a specific device
     {
         // Initialize fields
-        kernel_func             = ScanKernel<OpaqueCtaScanPassPolicy>;
-        tile_items             = CtaScanPassPolicy::TILE_ITEMS;
-        sm_bank_config             = CtaScanPassPolicy::SMEM_CONFIG;
+        kernel_func             = ScanKernel<OpaqueBlockScanPassPolicy>;
+        tile_items             = BlockScanPassPolicy::TILE_ITEMS;
+        sm_bank_config             = BlockScanPassPolicy::SMEM_CONFIG;
 
         // Initialize super class
         return cub::KernelProps::Init(
             kernel_func,
-            CtaScanPassPolicy::CTA_THREADS,
+            BlockScanPassPolicy::BLOCK_THREADS,
             cuda_props);
     }
 

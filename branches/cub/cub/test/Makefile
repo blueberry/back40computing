@@ -1,20 +1,30 @@
-#-------------------------------------------------------------------------------
-#
-# Copyright 2010-2012 Duane Merrill
-# 
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-# 
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License. 
-#  
-#-------------------------------------------------------------------------------
+#/******************************************************************************
+# * Copyright (c) 2011, Duane Merrill.  All rights reserved.
+# * Copyright (c) 2011-2013, NVIDIA CORPORATION.  All rights reserved.
+# * 
+# * Redistribution and use in source and binary forms, with or without
+# * modification, are permitted provided that the following conditions are met:
+# *	 * Redistributions of source code must retain the above copyright
+# *	   notice, this list of conditions and the following disclaimer.
+# *	 * Redistributions in binary form must reproduce the above copyright
+# *	   notice, this list of conditions and the following disclaimer in the
+# *	   documentation and/or other materials provided with the distribution.
+# *	 * Neither the name of the NVIDIA CORPORATION nor the
+# *	   names of its contributors may be used to endorse or promote products
+# *	   derived from this software without specific prior written permission.
+# * 
+# * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+# * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+# * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# * DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+# * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+# * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+# * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+# * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+# * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# *
+#******************************************************************************/
  
 #-------------------------------------------------------------------------------
 # Build script for project
@@ -88,11 +98,11 @@ else
 endif
 
 ifeq ($(verbose), 1)
-    NVCCFLAGS += -v
+	NVCCFLAGS += -v
 endif
 
 ifeq ($(keep), 1)
-    NVCCFLAGS += -keep
+	NVCCFLAGS += -keep
 endif
 
 SUFFIX = $(PTX_SUFFIX)_$(NVCC_VERSION)_$(ABI_SUFFIX)_$(ARCH_SUFFIX)
@@ -103,7 +113,7 @@ SUFFIX = $(PTX_SUFFIX)_$(NVCC_VERSION)_$(ABI_SUFFIX)_$(ARCH_SUFFIX)
 
 rwildcard=$(foreach d,$(wildcard $1*),$(call rwildcard,$d/,$2) $(filter $(subst *,%,$2),$d))
 
-DEPS = 	./Makefile \
+DEPS =	 ./Makefile \
 		./test_util.h \
 		$(call rwildcard,../../cub/,*.cuh)
 
@@ -140,14 +150,14 @@ bin/test_grid_barrier_$(SUFFIX) : test_grid_barrier.cu $(DEPS)
 	
 
 #-------------------------------------------------------------------------------
-# make test_cta_reduce 
+# make test_block_reduce 
 #-------------------------------------------------------------------------------
 
-test_cta_reduce: bin/test_cta_reduce_$(SUFFIX)
+test_block_reduce: bin/test_block_reduce_$(SUFFIX)
 
-bin/test_cta_reduce_$(SUFFIX) : test_cta_reduce.cu $(DEPS)
+bin/test_block_reduce_$(SUFFIX) : test_block_reduce.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_cta_reduce_$(SUFFIX) test_cta_reduce.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_block_reduce_$(SUFFIX) test_block_reduce.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
 
 
 #-------------------------------------------------------------------------------
@@ -162,36 +172,36 @@ bin/test_warp_scan_$(SUFFIX) : test_warp_scan.cu $(DEPS)
 
 
 #-------------------------------------------------------------------------------
-# make test_cta_scan 
+# make test_block_scan 
 #-------------------------------------------------------------------------------
 
-test_cta_scan: bin/test_cta_scan_$(SUFFIX)
+test_block_scan: bin/test_block_scan_$(SUFFIX)
 
-bin/test_cta_scan_$(SUFFIX) : test_cta_scan.cu $(DEPS)
+bin/test_block_scan_$(SUFFIX) : test_block_scan.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_cta_scan_$(SUFFIX) test_cta_scan.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_block_scan_$(SUFFIX) test_block_scan.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
 
 
 #-------------------------------------------------------------------------------
-# make test_cta_load_store 
+# make test_block_load_store 
 #-------------------------------------------------------------------------------
 
-test_cta_load_store: bin/test_cta_load_store_$(SUFFIX)
+test_block_load_store: bin/test_block_load_store_$(SUFFIX)
 
-bin/test_cta_load_store_$(SUFFIX) : test_cta_load_store.cu $(DEPS)
+bin/test_block_load_store_$(SUFFIX) : test_block_load_store.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_cta_load_store_$(SUFFIX) test_cta_load_store.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_block_load_store_$(SUFFIX) test_block_load_store.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3
 	
 	
 #-------------------------------------------------------------------------------
-# make test_cta_radix_sort 
+# make test_block_radix_sort 
 #-------------------------------------------------------------------------------
 
-test_cta_radix_sort: bin/test_cta_radix_sort_$(SUFFIX)
+test_block_radix_sort: bin/test_block_radix_sort_$(SUFFIX)
 
-bin/test_cta_radix_sort_$(SUFFIX) : test_cta_radix_sort.cu $(DEPS)
+bin/test_block_radix_sort_$(SUFFIX) : test_block_radix_sort.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_cta_radix_sort_$(SUFFIX) test_cta_radix_sort.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_block_radix_sort_$(SUFFIX) test_block_radix_sort.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3
 
 
 
@@ -216,12 +226,12 @@ bin/test_coo_spmv_$(SUFFIX) : test_coo_spmv.cu $(DEPS)
 	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_coo_spmv_$(SUFFIX) test_coo_spmv.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3
 
 #-------------------------------------------------------------------------------
-# make test_cta_serialize
+# make test_block_serialize
 #-------------------------------------------------------------------------------
 
-test_cta_serialize: bin/test_cta_serialize_$(SUFFIX)
+test_block_serialize: bin/test_block_serialize_$(SUFFIX)
 
-bin/test_cta_serialize_$(SUFFIX) : test_cta_serialize.cu $(DEPS)
+bin/test_block_serialize_$(SUFFIX) : test_block_serialize.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_cta_serialize_$(SUFFIX) test_cta_serialize.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_block_serialize_$(SUFFIX) test_block_serialize.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3
 

@@ -41,8 +41,8 @@ template <
 	typename OutputIterator,	// Iterator type for producing output
 	typename ReductionOp,		// Type of reduction operator (functor)
 	typename SizeT>				// Integral type for indexing input items
-struct Cta
-	: CtaEvenShare<				// Progress-management base class
+struct Block
+	: BlockEvenShare<				// Progress-management base class
 		SizeT,
 		KernelPolicy::TILE_ITEMS,
 		KernelPolicy::WORK_STEALING>
@@ -55,10 +55,10 @@ struct Cta
 	typedef typename std::iterator_traits<InputIterator>::value_type T;
 
 	// Progress-management base class
-	typedef CtaEvenShare<
+	typedef BlockEvenShare<
 		SizeT,
 		KernelPolicy::TILE_ITEMS,
-		KernelPolicy::WORK_STEALING> CtaEvenShare;
+		KernelPolicy::WORK_STEALING> BlockEvenShare;
 
 	// Tile reader type
 
@@ -93,14 +93,14 @@ struct Cta
 	 * Constructor
 	 */
 	template <typename WorkDistribution>
-	__device__ __forceinline__ Cta(
+	__device__ __forceinline__ Block(
 		SmemStorage 					&smem_storage,
 		InputIterator 					d_in,
 		OutputIterator 					d_out,
 		ReductionOp 					reduction_op,
 		const WorkDistribution			&work_distribution) :
 			// Initializers
-			CtaEvenShare(work_distribution),
+			BlockEvenShare(work_distribution),
 			d_in(d_in),
 			d_out(d_out),
 			reduction_op(reduction_op)

@@ -68,56 +68,56 @@ struct TunedPolicy<200, KeyType, ValueType, SizeT>
 
     // Dispatch policy
     typedef DispatchPolicy <
-        8,                                          // UPSWEEP_MIN_CTA_OCCUPANCY
-        4,                                          // DOWNSWEEP_MIN_CTA_OCCUPANCY
-        4>                                          // HYBRID_MIN_CTA_OCCUPANCY
+        8,                                          // UPSWEEP_MIN_BLOCK_OCCUPANCY
+        4,                                          // DOWNSWEEP_MIN_BLOCK_OCCUPANCY
+        4>                                          // HYBRID_MIN_BLOCK_OCCUPANCY
             DispatchPolicyT;
 
     // Upsweep pass CTA policy
-    typedef CtaUpsweepPassPolicy<
+    typedef BlockUpsweepPassPolicy<
         RADIX_BITS,                                 // RADIX_BITS
-        128,                                        // CTA_THREADS
+        128,                                        // BLOCK_THREADS
         17,                                         // THREAD_ITEMS,
         cub::PTX_LOAD_NONE,                         // LOAD_MODIFIER
         cub::PTX_STORE_NONE,                        // STORE_MODIFIER
         cudaSharedMemBankSizeFourByte>              // SMEM_CONFIG
-            CtaUpsweepPassPolicyT;
+            BlockUpsweepPassPolicyT;
 
     // Spine-scan pass CTA policy
-    typedef CtaScanPassPolicy<
-        256,                                    // CTA_THREADS
+    typedef BlockScanPassPolicy<
+        256,                                    // BLOCK_THREADS
         4,                                        // THREAD_STRIP_ITEMS
         4,                                        // TILE_STRIPS
         cub::PTX_LOAD_NONE,                            // LOAD_MODIFIER
         cub::PTX_STORE_NONE,                        // STORE_MODIFIER
         cudaSharedMemBankSizeFourByte>            // SMEM_CONFIG
-            CtaScanPassPolicyT;
+            BlockScanPassPolicyT;
 
     // Downsweep pass CTA policy
-    typedef CtaDownsweepPassPolicy<
+    typedef BlockDownsweepPassPolicy<
         RADIX_BITS,                                // RADIX_BITS
-        128,                                    // CTA_THREADS
+        128,                                    // BLOCK_THREADS
         17,                                        // THREAD_ITEMS
         SCATTER_TWO_PHASE,                        // SCATTER_STRATEGY
         cub::PTX_LOAD_NONE,                         // LOAD_MODIFIER
         cub::PTX_STORE_NONE,                        // STORE_MODIFIER
         cudaSharedMemBankSizeFourByte>            // SMEM_CONFIG
-            CtaDownsweepPassPolicyT;
+            BlockDownsweepPassPolicyT;
 
     // Single-tile CTA policy
-    typedef CtaSingleTilePolicy<
+    typedef BlockSingleTilePolicy<
         RADIX_BITS,                                // RADIX_BITS
-        192,                                    // CTA_THREADS
+        192,                                    // BLOCK_THREADS
         ((KEYS_ONLY) ? 17 : 9),                 // THREAD_ITEMS
         cub::PTX_LOAD_NONE,                         // LOAD_MODIFIER
         cub::PTX_STORE_NONE,                        // STORE_MODIFIER
         cudaSharedMemBankSizeFourByte>            // SMEM_CONFIG
-            CtaSingleTilePolicyT;
+            BlockSingleTilePolicyT;
 
     // Hybrid pass CTA policy
-    typedef CtaHybridPassPolicy<
+    typedef BlockHybridPassPolicy<
         RADIX_BITS,                                // RADIX_BITS
-        128,                                    // CTA_THREADS
+        128,                                    // BLOCK_THREADS
         17,                                     // UPSWEEP_THREAD_ITEMS
         17,                                     // DOWNSWEEP_THREAD_ITEMS
         SCATTER_TWO_PHASE,                        // DOWNSWEEP_SCATTER_STRATEGY
@@ -125,7 +125,7 @@ struct TunedPolicy<200, KeyType, ValueType, SizeT>
         cub::PTX_LOAD_NONE,                         // LOAD_MODIFIER
         cub::PTX_STORE_NONE,                        // STORE_MODIFIER
         cudaSharedMemBankSizeFourByte>            // SMEM_CONFIG
-            CtaHybridPassPolicyT;
+            BlockHybridPassPolicyT;
 
 };
 

@@ -42,19 +42,19 @@ namespace radix_sort {
  */
 template <
     int                             _RADIX_BITS,            // The number of radix bits, i.e., log2(bins)
-    int                             _CTA_THREADS,            // The number of threads per CTA
+    int                             _BLOCK_THREADS,            // The number of threads per CTA
     int                             _THREAD_ITEMS,            // The number of items to load per thread per tile
     cub::PtxLoadModifier                 _LOAD_MODIFIER,            // Load cache-modifier
     cub::PtxStoreModifier                _STORE_MODIFIER,        // Store cache-modifier
     cudaSharedMemConfig                _SMEM_CONFIG>            // Shared memory bank size
-struct CtaUpsweepPassPolicy
+struct BlockUpsweepPassPolicy
 {
     enum
     {
         RADIX_BITS                    = _RADIX_BITS,
-        CTA_THREADS                    = _CTA_THREADS,
+        BLOCK_THREADS                    = _BLOCK_THREADS,
         THREAD_ITEMS                  = _THREAD_ITEMS,
-        TILE_ITEMS                = CTA_THREADS * THREAD_ITEMS,
+        TILE_ITEMS                = BLOCK_THREADS * THREAD_ITEMS,
     };
 
     static const cub::PtxLoadModifier         LOAD_MODIFIER         = _LOAD_MODIFIER;
@@ -74,10 +74,10 @@ struct CtaUpsweepPassPolicy
  * over a range of input tiles.
  */
 template <
-    typename CtaUpsweepPassPolicy,
+    typename BlockUpsweepPassPolicy,
     typename KeyType,
     typename SizeT>
-class CtaUpsweepPass
+class BlockUpsweepPass
 {
 private:
 
@@ -91,25 +91,25 @@ private:
     typedef unsigned char DigitCounter;
 
     // Integer type for packing DigitCounters into columns of shared memory banks
-    typedef typename cub::If<(CtaUpsweepPassPolicy::SMEM_CONFIG == cudaSharedMemBankSizeEightByte),
+    typedef typename cub::If<(BlockUpsweepPassPolicy::SMEM_CONFIG == cudaSharedMemBankSizeEightByte),
         unsigned long long,
         unsigned int>::Type PackedCounter;
 
     enum
     {
-        RADIX_BITS                    = CtaUpsweepPassPolicy::RADIX_BITS,
+        RADIX_BITS                    = BlockUpsweepPassPolicy::RADIX_BITS,
         RADIX_DIGITS                 = 1 << RADIX_BITS,
 
-        CTA_THREADS                 = CtaUpsweepPassPolicy::CTA_THREADS,
+        BLOCK_THREADS                 = BlockUpsweepPassPolicy::BLOCK_THREADS,
 
         LOG_WARP_THREADS             = cub::DeviceProps::LOG_WARP_THREADS,
         WARP_THREADS                = 1 << LOG_WARP_THREADS,
 
-        WARPS                        = (CTA_THREADS + WARP_THREADS - 1) / WARP_THREADS,
+        WARPS                        = (BLOCK_THREADS + WARP_THREADS - 1) / WARP_THREADS,
 
-        KEYS_PER_THREAD              = CtaUpsweepPassPolicy::THREAD_ITEMS,
+        KEYS_PER_THREAD              = BlockUpsweepPassPolicy::THREAD_ITEMS,
 
-        TILE_ITEMS                    = CTA_THREADS * KEYS_PER_THREAD,
+        TILE_ITEMS                    = BLOCK_THREADS * KEYS_PER_THREAD,
 
         BYTES_PER_COUNTER            = sizeof(DigitCounter),
         LOG_BYTES_PER_COUNTER        = cub::Log2<BYTES_PER_COUNTER>::VALUE,
@@ -140,8 +140,8 @@ public:
     {
         union
         {
-            DigitCounter     digit_counters[COUNTER_LANES][CTA_THREADS][PACKING_RATIO];
-            PackedCounter     packed_counters[COUNTER_LANES][CTA_THREADS];
+            DigitCounter     digit_counters[COUNTER_LANES][BLOCK_THREADS][PACKING_RATIO];
+            PackedCounter     packed_counters[COUNTER_LANES][BLOCK_THREADS];
             SizeT             digit_partials[RADIX_DIGITS][WARP_THREADS + 1];
         };
     };
@@ -180,7 +180,7 @@ private:
 
         // BucketKeys
         static __device__ __forceinline__ void BucketKeys(
-            CtaUpsweepPass &cta,
+            BlockUpsweepPass &cta,
             UnsignedBits keys[KEYS_PER_THREAD])
         {
             cta.Bucket(keys[COUNT]);
@@ -190,7 +190,7 @@ private:
         }
 
         // ProcessTiles
-        static __device__ __forceinline__ void ProcessTiles(CtaUpsweepPass &cta, SizeT cta_offset)
+        static __device__ __forceinline__ void ProcessTiles(BlockUpsweepPass &cta, SizeT cta_offset)
         {
             // Next
             Iterate<1, HALF>::ProcessTiles(cta, cta_offset);
@@ -203,10 +203,10 @@ private:
     struct Iterate<MAX, MAX>
     {
         // BucketKeys
-        static __device__ __forceinline__ void BucketKeys(CtaUpsweepPass &cta, UnsignedBits keys[KEYS_PER_THREAD]) {}
+        static __device__ __forceinline__ void BucketKeys(BlockUpsweepPass &cta, UnsignedBits keys[KEYS_PER_THREAD]) {}
 
         // ProcessTiles
-        static __device__ __forceinline__ void ProcessTiles(CtaUpsweepPass &cta, SizeT cta_offset)
+        static __device__ __forceinline__ void ProcessTiles(BlockUpsweepPass &cta, SizeT cta_offset)
         {
             cta.ProcessFullTile(cta_offset);
         }
@@ -220,7 +220,7 @@ private:
     /**
      * State bundle constructor
      */
-    __device__ __forceinline__ CtaUpsweepPass(
+    __device__ __forceinline__ BlockUpsweepPass(
         SmemStorage        &smem_storage,
         KeyType         *d_keys_in,
         unsigned int     current_bit) :
@@ -296,7 +296,7 @@ private:
             if (counter_lane < COUNTER_LANES)
             {
                 #pragma unroll
-                for (int PACKED_COUNTER = 0; PACKED_COUNTER < CTA_THREADS; PACKED_COUNTER += WARP_THREADS)
+                for (int PACKED_COUNTER = 0; PACKED_COUNTER < BLOCK_THREADS; PACKED_COUNTER += WARP_THREADS)
                 {
                     #pragma unroll
                     for (int UNPACKED_COUNTER = 0; UNPACKED_COUNTER < PACKING_RATIO; UNPACKED_COUNTER++)
@@ -359,7 +359,7 @@ private:
         #pragma unroll
         for (int LOAD = 0; LOAD < KEYS_PER_THREAD; LOAD++)
         {
-            keys[LOAD] = d_keys_in[cta_offset + threadIdx.x + (LOAD * CTA_THREADS)];
+            keys[LOAD] = d_keys_in[cta_offset + threadIdx.x + (LOAD * BLOCK_THREADS)];
         }
 
         // Bucket tile of keys
@@ -381,7 +381,7 @@ private:
             // Load and bucket key
             UnsignedBits key = d_keys_in[cta_offset];
             Bucket(key);
-            cta_offset += CTA_THREADS;
+            cta_offset += BLOCK_THREADS;
         }
     }
 
@@ -402,7 +402,7 @@ public:
         SizeT             &bin_count)                // The digit count for tid'th bin (output param, valid in the first RADIX_DIGITS threads)
     {
         // Construct state bundle
-        CtaUpsweepPass cta(
+        BlockUpsweepPass cta(
             smem_storage,
             d_keys_in,
             current_bit);

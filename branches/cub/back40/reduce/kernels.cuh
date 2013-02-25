@@ -48,18 +48,18 @@ __global__ void UpsweepKernel(
 	WorkDistribution<SizeT> 		work_distribution)
 {
 	// CTA abstraction type
-	typedef Cta<
+	typedef Block<
 		KernelPolicy,
 		InputIterator,
 		OutputIterator,
 		ReductionOp,
-		SizeT> Cta;
+		SizeT> Block;
 
 	// Declare shared memory for the CTA
-	__shared__ typename Cta::SmemStorage smem_storage;
+	__shared__ typename Block::SmemStorage smem_storage;
 
 	// Create CTA and have it iteratively process input tiles
-	Cta cta(smem_storage, d_in, d_out, reduction_op, work_distribution);
+	Block cta(smem_storage, d_in, d_out, reduction_op, work_distribution);
 	cta.ProcessTiles();
 }
 
@@ -80,18 +80,18 @@ __global__ void SingleKernel(
 	SizeT							num_elements)
 {
 	// CTA abstraction type
-	typedef Cta<
+	typedef Block<
 		KernelPolicy,
 		InputIterator,
 		OutputIterator,
 		ReductionOp,
-		SizeT> Cta;
+		SizeT> Block;
 
 	// Declare shared memory for the CTA
-	__shared__ typename Cta::SmemStorage smem_storage;
+	__shared__ typename Block::SmemStorage smem_storage;
 
 	// Create CTA and have it iteratively process input tiles
-	Cta cta(smem_storage, d_in, d_out, reduction_op, num_elements);
+	Block cta(smem_storage, d_in, d_out, reduction_op, num_elements);
 	cta.ProcessTiles();
 }
 

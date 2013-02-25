@@ -40,19 +40,19 @@ namespace radix_sort {
  * Spine scan CTA tuning policy
  */
 template <
-    int                     _CTA_THREADS,           // The number of threads per CTA
+    int                     _BLOCK_THREADS,           // The number of threads per CTA
     int                     _ITEMS_PER_THREAD,      // The number of consecutive keys to process per thread per global load
     int                     _TILE_STRIPS,           // The number of loads to process per thread per tile
     cub::PtxLoadModifier    _LOAD_MODIFIER,         // Load cache-modifier
     cub::PtxStoreModifier   _STORE_MODIFIER,        // Store cache-modifier
     cudaSharedMemConfig     _SMEM_CONFIG>           // Shared memory bank size
-struct CtaScanPassPolicy
+struct BlockScanPassPolicy
 {
     enum
     {
-        CTA_THREADS         = _CTA_THREADS,
+        BLOCK_THREADS         = _BLOCK_THREADS,
         ITEMS_PER_THREAD    = _ITEMS_PER_THREAD,
-        TILE_ITEMS          = CTA_THREADS * ITEMS_PER_THREAD,
+        TILE_ITEMS          = BLOCK_THREADS * ITEMS_PER_THREAD,
     };
 
     static const cub::PtxLoadModifier   LOAD_MODIFIER   = _LOAD_MODIFIER;
@@ -70,9 +70,9 @@ struct CtaScanPassPolicy
  * CTA-wide abstraction for computing a prefix scan over a range of input tiles
  */
 template <
-    typename CtaScanPassPolicy,
+    typename BlockScanPassPolicy,
     typename T>
-class CtaScanPass
+class BlockScanPass
 {
 private:
 
@@ -82,24 +82,24 @@ private:
 
     enum
     {
-        CTA_THREADS         = CtaScanPassPolicy::CTA_THREADS,
-        ITEMS_PER_THREAD    = CtaScanPassPolicy::ITEMS_PER_THREAD,
-        TILE_ITEMS          = CtaScanPassPolicy::TILE_ITEMS,
+        BLOCK_THREADS         = BlockScanPassPolicy::BLOCK_THREADS,
+        ITEMS_PER_THREAD    = BlockScanPassPolicy::ITEMS_PER_THREAD,
+        TILE_ITEMS          = BlockScanPassPolicy::TILE_ITEMS,
     };
 
-    /// CtaScan utility type
-    typedef cub::CtaScan<T, CTA_THREADS> CtaScan;
+    /// BlockScan utility type
+    typedef cub::BlockScan<T, BLOCK_THREADS> BlockScan;
 
-    /// Stateful callback functor to provide the running tile-prefix to CtaScan
-    struct CtaPrefixOp
+    /// Stateful callback functor to provide the running tile-prefix to BlockScan
+    struct BlockPrefixOp
     {
         T prefix;
 
         /// Constructor
-        __device__ __forceinline__ CtaPrefixOp() : prefix(0) {}
+        __device__ __forceinline__ BlockPrefixOp() : prefix(0) {}
 
         /**
-         * CTA-wide prefix callback functor called by thread-0 in CtaScan::ExclusiveScan().
+         * CTA-wide prefix callback functor called by thread-0 in BlockScan::ExclusiveScan().
          * Returns the CTA-wide prefix to apply to all scan inputs.
          */
         __device__ __forceinline__ T operator()(
@@ -116,7 +116,7 @@ public:
     /**
      * Shared memory storage layout
      */
-    typedef typename CtaScan::SmemStorage SmemStorage;
+    typedef typename BlockScan::SmemStorage SmemStorage;
 
 private:
 
@@ -133,21 +133,21 @@ private:
         T               *d_in,
         T               *d_out,
         SizeT           cta_offset,
-        CtaPrefixOp     &carry)
+        BlockPrefixOp     &carry)
     {
         // Tile of scan elements
         T partials[ITEMS_PER_THREAD];
 
         // Load tile
-        cub::CtaLoadVectorized<CtaScanPassPolicy::LOAD_MODIFIER>(
+        cub::BlockLoadVectorized<BlockScanPassPolicy::LOAD_MODIFIER>(
             partials, d_in, cta_offset);
 
         // Scan tile with carry in thread-0
         T aggregate;
-        CtaScan::ExclusiveSum(smem_storage, partials, partials, aggregate, carry);
+        BlockScan::ExclusiveSum(smem_storage, partials, partials, aggregate, carry);
 
         // Store tile
-        cub::CtaStoreVectorized<CtaScanPassPolicy::STORE_MODIFIER>(
+        cub::BlockStoreVectorized<BlockScanPassPolicy::STORE_MODIFIER>(
             partials, d_in, cta_offset);
     }
 
@@ -169,7 +169,7 @@ public:
     {
         // Running partial accumulated by the CTA over its tile-processing
         // lifetime (managed in each raking thread)
-        CtaPrefixOp carry;
+        BlockPrefixOp carry;
 
         SizeT cta_offset = 0;
         while (cta_offset + TILE_ITEMS <= num_elements)

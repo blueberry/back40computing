@@ -38,11 +38,11 @@ namespace radix_sort {
  * Kernel entry point
  */
 template <
-    typename CtaSingleTilePolicy,
+    typename BlockSingleTilePolicy,
     typename KeyType,
     typename ValueType>
 __launch_bounds__ (
-    CtaSingleTilePolicy::CTA_THREADS,
+    BlockSingleTilePolicy::BLOCK_THREADS,
     1)
 __global__
 void SingleTileKernel(
@@ -55,16 +55,16 @@ void SingleTileKernel(
     int             num_elements)
 {
     // CTA abstraction type
-    typedef CtaSingleTile<
-        CtaSingleTilePolicy,
+    typedef BlockSingleTile<
+        BlockSingleTilePolicy,
         KeyType,
-        ValueType> CtaSingleTileT;
+        ValueType> BlockSingleTileT;
 
     // Shared data structures
-    __shared__ typename CtaSingleTileT::SmemStorage smem_storage;
+    __shared__ typename BlockSingleTileT::SmemStorage smem_storage;
 
     // Sort input tile
-    CtaSingleTileT::Sort(
+    BlockSingleTileT::Sort(
         smem_storage,
         d_keys_in,
         d_keys_out,
@@ -104,29 +104,29 @@ struct SingleTileKernelProps : cub::KernelProps
      * Initializer
      */
     template <
-        typename CtaSingleTilePolicy,
-        typename OpaqueCtaSingleTilePolicy>
+        typename BlockSingleTilePolicy,
+        typename OpaqueBlockSingleTilePolicy>
     cudaError_t Init(const cub::CudaProps &cuda_props)    // CUDA properties for a specific device
     {
         // Initialize fields
-        kernel_func             = SingleTileKernel<OpaqueCtaSingleTilePolicy>;
-        tile_items                 = CtaSingleTilePolicy::TILE_ITEMS;
-        sm_bank_config             = CtaSingleTilePolicy::SMEM_CONFIG;
+        kernel_func             = SingleTileKernel<OpaqueBlockSingleTilePolicy>;
+        tile_items                 = BlockSingleTilePolicy::TILE_ITEMS;
+        sm_bank_config             = BlockSingleTilePolicy::SMEM_CONFIG;
 
         // Initialize super class
         return cub::KernelProps::Init(
             kernel_func,
-            CtaSingleTilePolicy::CTA_THREADS,
+            BlockSingleTilePolicy::BLOCK_THREADS,
             cuda_props);
     }
 
     /**
      * Initializer
      */
-    template <typename CtaSingleTilePolicy>
+    template <typename BlockSingleTilePolicy>
     cudaError_t Init(const cub::CudaProps &cuda_props)    // CUDA properties for a specific device
     {
-        return Init<CtaSingleTilePolicy, CtaSingleTilePolicy>(cuda_props);
+        return Init<BlockSingleTilePolicy, BlockSingleTilePolicy>(cuda_props);
     }
 
 };
