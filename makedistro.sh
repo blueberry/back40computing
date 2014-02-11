@@ -6,6 +6,4 @@ tar 						\
 	--exclude=*/.svn 		\
 	--exclude=*/bin 		\
 	--exclude=*/testlab 	\
-	--exclude=*/graph		\
-	--exclude=*/bfs			\
 	-czvf b40c.$VER.tgz LICENSE.TXT VERSION.TXT b40c test
