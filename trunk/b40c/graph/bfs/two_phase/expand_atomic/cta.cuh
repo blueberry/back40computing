@@ -231,7 +231,9 @@ struct Cta
 						break;
 					}
 
-					if (owner == threadIdx.x) {
+                    __syncthreads();
+
+                    if (owner == threadIdx.x) {
 
 						// Got control of the CTA: command it
 						cta->smem_storage.state.warp_comm[0][0] = tile->row_offset[LOAD][VEC];										// start
