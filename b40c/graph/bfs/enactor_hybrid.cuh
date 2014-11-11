@@ -169,6 +169,7 @@ protected:
 			// Bind bitmask texture
 			int bytes = (graph_slice->nodes + 8 - 1) / 8;
 			cudaChannelFormatDesc bitmask_desc = cudaCreateChannelDesc<char>();
+			two_phase::contract_atomic::BitmaskTex<VisitedMask>::ref.channelDesc = bitmask_desc;
 			if (retval = util::B40CPerror(cudaBindTexture(
 					0,
 					two_phase::contract_atomic::BitmaskTex<VisitedMask>::ref,
@@ -179,6 +180,7 @@ protected:
 
 			// Bind row-offsets texture
 			cudaChannelFormatDesc row_offsets_desc = cudaCreateChannelDesc<SizeT>();
+			two_phase::expand_atomic::RowOffsetTex<SizeT>::ref.channelDesc = row_offsets_desc;
 			if (retval = util::B40CPerror(cudaBindTexture(
 					0,
 					two_phase::expand_atomic::RowOffsetTex<SizeT>::ref,
@@ -188,6 +190,7 @@ protected:
 				"EnactorHybrid cudaBindTexture row_offset_tex_ref failed", __FILE__, __LINE__)) break;
 
 			// Bind bitmask texture
+			contract_expand_atomic::BitmaskTex<VisitedMask>::ref.channelDesc = bitmask_desc;
 			if (retval = util::B40CPerror(cudaBindTexture(
 					0,
 					contract_expand_atomic::BitmaskTex<VisitedMask>::ref,
@@ -197,6 +200,7 @@ protected:
 				"EnactorHybrid cudaBindTexture bitmask_tex_ref failed", __FILE__, __LINE__)) break;
 
 			// Bind row-offsets texture
+			contract_expand_atomic::RowOffsetTex<SizeT>::ref.channelDesc = row_offsets_desc;
 			if (retval = util::B40CPerror(cudaBindTexture(
 					0,
 					contract_expand_atomic::RowOffsetTex<SizeT>::ref,

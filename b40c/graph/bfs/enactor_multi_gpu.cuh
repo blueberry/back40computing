@@ -458,6 +458,7 @@ public:
 				// Bind bitmask textures
 				int bytes = (csr_problem.nodes + 8 - 1) / 8;
 				cudaChannelFormatDesc bitmask_desc = cudaCreateChannelDesc<char>();
+				two_phase::contract_atomic::BitmaskTex<VisitedMask>::ref.channelDesc = bitmask_desc;
 				if (retval = util::B40CPerror(cudaBindTexture(
 						0,
 						two_phase::contract_atomic::BitmaskTex<VisitedMask>::ref,
@@ -468,6 +469,7 @@ public:
 
 				// Bind row-offsets texture
 				cudaChannelFormatDesc row_offsets_desc = cudaCreateChannelDesc<SizeT>();
+				two_phase::expand_atomic::RowOffsetTex<SizeT>::ref.channelDesc = row_offsets_desc;
 				if (retval = util::B40CPerror(cudaBindTexture(
 						0,
 						two_phase::expand_atomic::RowOffsetTex<SizeT>::ref,
