@@ -170,6 +170,7 @@ protected:
 			// Bind bitmask texture
 			int bytes = (graph_slice->nodes + 8 - 1) / 8;
 			cudaChannelFormatDesc bitmask_desc = cudaCreateChannelDesc<char>();
+			expand_contract_atomic::BitmaskTex<VisitedMask>::ref.channelDesc = bitmask_desc;
 			if (retval = util::B40CPerror(cudaBindTexture(
 					0,
 					expand_contract_atomic::BitmaskTex<VisitedMask>::ref,
@@ -180,6 +181,7 @@ protected:
 
 			// Bind row-offsets texture
 			cudaChannelFormatDesc row_offsets_desc = cudaCreateChannelDesc<SizeT>();
+			expand_contract_atomic::RowOffsetTex<SizeT>::ref.channelDesc = row_offsets_desc;
 			if (retval = util::B40CPerror(cudaBindTexture(
 					0,
 					expand_contract_atomic::RowOffsetTex<SizeT>::ref,
